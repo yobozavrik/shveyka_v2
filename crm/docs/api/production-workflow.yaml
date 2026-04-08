@@ -1,1402 +1,683 @@
-﻿openapi: 3.0.3
+openapi: 3.0.3
 info:
-  title: Shveyka Production Workflow API
-  version: 2.1.0
+  title: Shveyka CRM Production Workflow API
+  version: 2.2.0
   description: >
-    API РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅРЅРѕРіРѕ РїРѕС‚РѕРєР° Shveyka ERP.
-    BOM С…СЂР°РЅРёС‚СЃСЏ РІ СЃРїСЂР°РІРѕС‡РЅРёРєРµ РјРѕРґРµР»РµР№, MRP СЃРѕС…СЂР°РЅСЏРµС‚ СЃРЅРёРјРѕРє РїРѕС‚СЂРµР±РЅРѕСЃС‚Рё РІ production_order_materials,
-    Р° РїР°СЂС‚РёРё СЃРѕР·РґР°СЋС‚СЃСЏ РІСЂСѓС‡РЅСѓСЋ РІРЅСѓС‚СЂРё РєР°СЂС‚РѕС‡РєРё Р·Р°РєР°Р·Р° Рё СЂРµРґР°РєС‚РёСЂСѓСЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РґРѕ СЃР»РµРґСѓСЋС‰РµРіРѕ СЌС‚Р°РїР°.
+    Production order and batch workflow for the CRM app. This spec keeps the
+    manufacturing contract aligned with the current Supabase-backed route
+    handlers.
 servers:
   - url: /api
 
 tags:
   - name: ProductionOrders
-  - name: ProductionOrderLines
-  - name: ProductionOrderEvents
-  - name: ProductionOrderRequirements
-  - name: ProductionBatches
-  - name: ProductModels
-  - name: RouteCards
+  - name: Batches
   - name: Employees
   - name: Positions
-  - name: MobileStages
-  - name: MobileAuth
-  - name: MobileTasks
-  - name: MobileTaskEntries
+  - name: ProductModels
+  - name: RouteCards
 
 paths:
   /production-orders:
     get:
       tags: [ProductionOrders]
-      summary: РЎРїРёСЃРѕРє РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅРЅС‹С… Р·Р°РєР°Р·РѕРІ
-      parameters:
-        - in: query
-          name: status
-          schema: { type: string }
-        - in: query
-          name: order_type
-          schema:
-            type: string
-            enum: [stock, customer]
+      summary: List production orders
       responses:
-        '200':
-          description: РЎРїРёСЃРѕРє Р·Р°РєР°Р·РѕРІ
+        "200":
+          description: Array of orders.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/ProductionOrder'
+                  $ref: "#/components/schemas/ProductionOrder"
     post:
       tags: [ProductionOrders]
-      summary: РЎРѕР·РґР°С‚СЊ РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅРЅС‹Р№ Р·Р°РєР°Р·
+      summary: Create a production order
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProductionOrderCreateRequest'
+              $ref: "#/components/schemas/ProductionOrderCreateRequest"
       responses:
-        '200':
-          description: Р—Р°РєР°Р· СЃРѕР·РґР°РЅ
+        "200":
+          description: Created order.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductionOrder'
+                $ref: "#/components/schemas/ProductionOrder"
 
   /production-orders/{id}:
     get:
       tags: [ProductionOrders]
-      summary: РџРѕР»СѓС‡РёС‚СЊ Р·Р°РєР°Р·
+      summary: Get a production order
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: Р—Р°РєР°Р·
+        "200":
+          description: Production order payload.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductionOrder'
+                $ref: "#/components/schemas/ProductionOrder"
     patch:
       tags: [ProductionOrders]
-      summary: РћР±РЅРѕРІРёС‚СЊ РїРѕР»СЏ Р·Р°РєР°Р·Р°
+      summary: Update a production order
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProductionOrderPatchRequest'
+              $ref: "#/components/schemas/ProductionOrderPatchRequest"
       responses:
-        '200':
-          description: Р—Р°РєР°Р· РѕР±РЅРѕРІР»РµРЅ
+        "200":
+          description: Updated order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionOrder"
 
   /production-orders/{id}/lines:
     post:
-      tags: [ProductionOrderLines]
-      summary: Р”РѕР±Р°РІРёС‚СЊ РїРѕР·РёС†РёСЋ РІ Р·Р°РєР°Р·
+      tags: [ProductionOrders]
+      summary: Add a line to a production order
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProductionOrderLineCreateRequest'
+              $ref: "#/components/schemas/ProductionOrderLineCreateRequest"
       responses:
-        '201':
-          description: РџРѕР·РёС†РёСЏ СЃРѕР·РґР°РЅР°
+        "201":
+          description: Line created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductionOrderLine'
+                $ref: "#/components/schemas/ProductionOrderLine"
 
   /production-orders/{id}/events:
     get:
-      tags: [ProductionOrderEvents]
-      summary: РСЃС‚РѕСЂРёСЏ СЃРѕР±С‹С‚РёР№ Р·Р°РєР°Р·Р°
+      tags: [ProductionOrders]
+      summary: List production order events
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: РЎРѕР±С‹С‚РёСЏ Р·Р°РєР°Р·Р°
+        "200":
+          description: Event timeline.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/ProductionOrderEvent'
+                  $ref: "#/components/schemas/ProductionOrderEvent"
 
   /production-orders/{id}/requirements:
     get:
-      tags: [ProductionOrderRequirements]
-      summary: Р Р°СЃС‡РµС‚ РїРѕС‚СЂРµР±РЅРѕСЃС‚Рё РїРѕ Р·Р°РєР°Р·Сѓ
+      tags: [ProductionOrders]
+      summary: Calculate material requirements for an order
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: Р РµР·СѓР»СЊС‚Р°С‚ СЂР°СЃС‡РµС‚Р°
+        "200":
+          description: MRP snapshot.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequirementsResponse'
+                $ref: "#/components/schemas/RequirementsResponse"
 
   /production-orders/{id}/{action}:
     post:
       tags: [ProductionOrders]
-      summary: Р”РµР№СЃС‚РІРёРµ РЅР°Рґ Р·Р°РєР°Р·РѕРј
+      summary: Execute a production-order action
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
         - in: path
           name: action
           required: true
           schema:
             type: string
-            enum: [approve, material_check, launch, cancel-launch, complete, transfer_to_warehouse, close, cancel]
+            enum:
+              - approve
+              - material_check
+              - launch
+              - cancel-launch
+              - complete
+              - transfer_to_warehouse
+              - close
+              - cancel
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ActionRequest'
+              $ref: "#/components/schemas/ActionRequest"
       responses:
-        '200':
-          description: Р”РµР№СЃС‚РІРёРµ РІС‹РїРѕР»РЅРµРЅРѕ
-        '400':
-          description: РќРµРєРѕСЂСЂРµРєС‚РЅРѕРµ РґРµР№СЃС‚РІРёРµ РёР»Рё Р±РёР·РЅРµСЃ-РІР°Р»РёРґР°С†РёСЏ
+        "200":
+          description: Action completed.
 
   /production-orders/{id}/batches:
     post:
-      tags: [ProductionBatches]
-      summary: РЎРѕР·РґР°С‚СЊ РїР°СЂС‚РёСЋ РІСЂСѓС‡РЅСѓСЋ
+      tags: [Batches]
+      summary: Create a batch under a production order
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProductionBatchCreateRequest'
+              $ref: "#/components/schemas/BatchCreateRequest"
       responses:
-        '201':
-          description: РџР°СЂС‚РёСЏ СЃРѕР·РґР°РЅР°
+        "201":
+          description: Batch created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductionBatch'
+                $ref: "#/components/schemas/Batch"
 
   /batches:
     get:
-      tags: [ProductionBatches]
-      summary: РЎРїРёСЃРѕРє РїР°СЂС‚РёР№
+      tags: [Batches]
+      summary: List production batches
       responses:
-        '200':
-          description: РџР°СЂС‚РёРё
+        "200":
+          description: Array of batches.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/ProductionBatch'
+                  $ref: "#/components/schemas/Batch"
     post:
-      tags: [ProductionBatches]
-      summary: РЎРѕР·РґР°С‚СЊ РїР°СЂС‚РёСЋ
+      tags: [Batches]
+      summary: Create a batch
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProductionBatchCreateRequest'
+              $ref: "#/components/schemas/BatchCreateRequest"
       responses:
-        '201':
-          description: РџР°СЂС‚РёСЏ СЃРѕР·РґР°РЅР°
+        "201":
+          description: Batch created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductionBatch'
+                $ref: "#/components/schemas/Batch"
 
   /batches/{id}:
     get:
-      tags: [ProductionBatches]
-      summary: РџРѕР»СѓС‡РёС‚СЊ РїР°СЂС‚РёСЋ
+      tags: [Batches]
+      summary: Get a batch
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: РџР°СЂС‚РёСЏ
+        "200":
+          description: Batch payload.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProductionBatch'
+                $ref: "#/components/schemas/Batch"
     put:
-      tags: [ProductionBatches]
-      summary: РР·РјРµРЅРёС‚СЊ РїР°СЂС‚РёСЋ
+      tags: [Batches]
+      summary: Update a batch
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProductionBatchUpdateRequest'
+              $ref: "#/components/schemas/BatchUpdateRequest"
       responses:
-        '200':
-          description: РџР°СЂС‚РёСЏ РѕР±РЅРѕРІР»РµРЅР°
+        "200":
+          description: Updated batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Batch"
     delete:
-      tags: [ProductionBatches]
-      summary: РЈРґР°Р»РёС‚СЊ РїР°СЂС‚РёСЋ
+      tags: [Batches]
+      summary: Delete a batch
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: РџР°СЂС‚РёСЏ СѓРґР°Р»РµРЅР°  
-
-  /batches/{id}/stages:
-    get:
-      tags: [ProductionBatches]
-      summary: Дерево етапів партії
-      description: >
-        Returns the stage tree for the centered CRM batch modal. Each stage can include its saved entries so the UI can drill into a dedicated stage modal above the batch modal. For cutting, the response is used to render individual nastils and a dedicated nastil modal above the stage modal, including the order size grid derived from the batch model sizes.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Стадії, задачі й записи по партії
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BatchStageFlowResponse'
-    post:
-      tags: [ProductionBatches]
-      summary: Передати партію на наступний етап
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                action:
-                  type: string
-                  enum: [advance]
-      responses:
-        '200':
-          description: Наступний етап створено і партію оновлено
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  batch:
-                    $ref: '#/components/schemas/ProductionBatch'
-                  current_stage:
-                    $ref: '#/components/schemas/BatchStageSummary'
-                  next_stage:
-                    $ref: '#/components/schemas/BatchStageSummary'
-                  task:
-                    $ref: '#/components/schemas/BatchTask'
-
-  /product-models:
-    get:
-      tags: [ProductModels]
-      summary: РЎРїСЂР°РІРѕС‡РЅРёРє РјРѕРґРµР»РµР№
-      parameters:
-        - in: query
-          name: source
-          schema:
-            type: string
-            enum: [keycrm]
-      responses:
-        '200':
-          description: РњРѕРґРµР»Рё
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ProductModel'
-
-  /product-models/{id}/materials:
-    get:
-      tags: [ProductModels]
-      summary: РќРѕСЂРјС‹ РјР°С‚РµСЂРёР°Р»РѕРІ РјРѕРґРµР»Рё
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: РќРѕСЂРјС‹ РјРѕРґРµР»Рё
-    post:
-      tags: [ProductModels]
-      summary: Р”РѕР±Р°РІРёС‚СЊ РЅРѕСЂРјСѓ РјР°С‚РµСЂРёР°Р»Р°
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-      responses:
-        '201':
-          description: РќРѕСЂРјР° СЃРѕР·РґР°РЅР°
-
-  /product-models/{id}/attributes:
-    get:
-      tags: [ProductModels]
-      summary: РђС‚СЂРёР±СѓС‚С‹ РјРѕРґРµР»Рё
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: РђС‚СЂРёР±СѓС‚С‹ РјРѕРґРµР»Рё
-    post:
-      tags: [ProductModels]
-      summary: РЎРѕС…СЂР°РЅРёС‚СЊ Р·РЅР°С‡РµРЅРёСЏ Р°С‚СЂРёР±СѓС‚РѕРІ
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-      responses:
-        '200':
-          description: РђС‚СЂРёР±СѓС‚С‹ СЃРѕС…СЂР°РЅРµРЅС‹
-
-  /route-cards:
-    get:
-      tags: [RouteCards]
-      summary: РЎРїРёСЃРѕРє РјР°СЂС€СЂСѓС‚РЅС‹С… РєР°СЂС‚
-      responses:
-        '200':
-          description: РњР°СЂС€СЂСѓС‚РЅС‹Рµ РєР°СЂС‚С‹
-    post:
-      tags: [RouteCards]
-      summary: РЎРѕР·РґР°С‚СЊ РјР°СЂС€СЂСѓС‚РЅСѓСЋ РєР°СЂС‚Сѓ
-      requestBody:
-        required: true
-      responses:
-        '201':
-          description: РљР°СЂС‚Р° СЃРѕР·РґР°РЅР°
+        "204":
+          description: Batch deleted.
 
   /batches/{id}/launch:
     post:
-      tags: [ProductionBatches]
-      summary: РџРµСЂРµРґР°С‚Рё РїР°СЂС‚С–СЋ РІ СЂРѕР·РєСЂС–Р№
+      tags: [Batches]
+      summary: Launch a batch to the next execution stage
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                note:
-                  type: string
-                  nullable: true
+              $ref: "#/components/schemas/LaunchRequest"
       responses:
-        '200':
-          description: РџР°СЂС‚С–СЋ РїРµСЂРµРґР°РЅРѕ РІ СЂРѕР·РєСЂС–Р№
+        "200":
+          description: Launch result with created task.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  task:
-                    $ref: '#/components/schemas/BatchTask'
-                  batch:
-                    $ref: '#/components/schemas/ProductionBatch'
+                $ref: "#/components/schemas/LaunchResponse"
 
-  /mobile/stages:
+  /batches/{id}/stages:
     get:
-      tags: [MobileStages]
-      summary: Довідник етапів і операцій
+      tags: [Batches]
+      summary: Get the batch stage tree and execution summary
       parameters:
-        - in: query
-          name: code
-          schema: { type: string }
-        - in: query
-          name: include_inactive
-          schema:
-            type: boolean
-            default: false
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: Список етапів
+        "200":
+          description: Stage tree.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ProductionStageWithOperations'
+                $ref: "#/components/schemas/BatchStagesResponse"
 
-  /mobile/tasks:
+  /batches/{id}/pipeline:
     get:
-      tags: [MobileTasks]
-      summary: Активні завдання працівника
+      tags: [Batches]
+      summary: Get the batch pipeline snapshot
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: Список активних завдань для ролі працівника
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BatchTask'
+        "200":
+          description: Pipeline snapshot.
 
-  /mobile/tasks/{id}:
-    get:
-      tags: [MobileTasks]
-      summary: Р”РµС‚Р°Р»С– Р·Р°РґР°С‡С– СЂРѕР·РєСЂРѕСЋ
+  /batches/{id}/status:
+    patch:
+      tags: [Batches]
+      summary: Update batch status
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Динамічний payload етапу, операцій і записів
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  task:
-                    $ref: '#/components/schemas/BatchTask'
-                  batch:
-                    $ref: '#/components/schemas/ProductionBatch'
-                  stage:
-                    $ref: '#/components/schemas/ProductionStageWithOperations'
-                  entries:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TaskEntry'
-                  legacy_nastils:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/CuttingNastil'
-                  display_entries:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TaskEntry'
-                  available_colors:
-                    type: array
-                    items:
-                      type: string
-                  summary:
-                    type: object
-                    properties:
-                      entries: { type: integer }
-                      quantity: { type: integer }
-    post:
-      tags: [MobileTasks]
-      summary: РџСЂРёР№РЅСЏС‚Рё Р°Р±Рѕ Р·Р°РІРµСЂС€РёС‚Рё Р·Р°РґР°С‡Сѓ
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TaskActionRequest'
+              $ref: "#/components/schemas/BatchStatusPatchRequest"
       responses:
-        '200':
-          description: Updated task
+        "200":
+          description: Updated batch.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  task:
-                    $ref: '#/components/schemas/BatchTask'
-
-  /mobile/tasks/{id}/entries:
-    post:
-      tags: [MobileTaskEntries]
-      summary: Додати запис до операції етапу
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TaskEntryCreateRequest'
-      responses:
-        '200':
-          description: Запис створено
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  entry:
-                    $ref: '#/components/schemas/TaskEntry'
-                  legacy_nastil:
-                    allOf:
-                      - $ref: '#/components/schemas/CuttingNastil'
-                    nullable: true
-
-  /mobile/tasks/{id}/nastils:
-    get:
-      tags: [MobileTasks]
-      summary: РЎРїРёСЃРѕРє РЅР°СЃС‚РёР»С–РІ Р·Р°РґР°С‡С–
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: РќР°СЃС‚РёР»Рё Р·Р°РґР°С‡С–
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CuttingNastil'
-    post:
-      tags: [MobileTasks]
-      summary: Р”РѕРґР°С‚Рё СЂСѓР»РѕРЅ РґРѕ СЂРѕР·РєСЂРѕСЋ
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CuttingNastilCreateRequest'
-      responses:
-        '200':
-          description: РЎС‚РІРѕСЂРµРЅРёР№ РЅР°СЃС‚РёР»
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CuttingNastil'
+                $ref: "#/components/schemas/Batch"
 
   /employees:
     get:
       tags: [Employees]
-      summary: РЎРїРёСЃРѕРє СЃРїС–РІСЂРѕР±С–С‚РЅРёРєС–РІ
-      description: Повертає співробітників без звільнених записів; dismissed залишається в базі для історії, але не показується у списку.
+      summary: List employees
       responses:
-        '200':
-          description: РЎРїРёСЃРѕРє СЃРїС–РІСЂРѕР±С–С‚РЅРёРєС–РІ
+        "200":
+          description: Array of employees.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Employee'
+                  $ref: "#/components/schemas/Employee"
     post:
       tags: [Employees]
-      summary: РЎС‚РІРѕСЂРёС‚Рё СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР° С– worker-РґРѕСЃС‚СѓРї
+      summary: Create an employee record
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmployeeCreateRequest'
+              $ref: "#/components/schemas/EmployeeCreateRequest"
       responses:
-        '200':
-          description: РЎРїС–РІСЂРѕР±С–С‚РЅРёРєР° СЃС‚РІРѕСЂРµРЅРѕ
+        "200":
+          description: Created employee.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Employee'
+                $ref: "#/components/schemas/Employee"
 
   /employees/{id}:
     get:
       tags: [Employees]
-      summary: РћС‚СЂРёРјР°С‚Рё СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°
+      summary: Get an employee
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: РЎРїС–РІСЂРѕР±С–С‚РЅРёРє
+        "200":
+          description: Employee payload.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Employee'
-    patch:
+                $ref: "#/components/schemas/Employee"
+    post:
       tags: [Employees]
-      summary: РћРЅРѕРІРёС‚Рё СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР° С– РґРѕСЃС‚СѓРї
+      summary: Update an employee
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmployeeUpdateRequest'
+              $ref: "#/components/schemas/EmployeeUpdateRequest"
       responses:
-        '200':
-          description: РЎРїС–РІСЂРѕР±С–С‚РЅРёРєР° РѕРЅРѕРІР»РµРЅРѕ
-    delete:
-      tags: [Employees]
-      summary: Р”РµР°РєС‚РёРІСѓРІР°С‚Рё СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°
-      summary: Позначити співробітника як dismissed
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: РЎРїС–РІСЂРѕР±С–С‚РЅРёРєР° РґРµР°РєС‚РёРІРѕРІР°РЅРѕ
+        "200":
+          description: Updated employee.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
 
   /positions:
     get:
       tags: [Positions]
-      summary: Р”РѕРІС–РґРЅРёРє РїРѕСЃР°Рґ
-      description: Повертає довідник посад із `shveyka.positions`; якщо міграцію ще не застосовано, CRM використовує seeded fallback список без помилки.
+      summary: List positions
       responses:
-        '200':
-          description: РЎРїРёСЃРѕРє РїРѕСЃР°Рґ
+        "200":
+          description: Array of positions.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Position'
+                  $ref: "#/components/schemas/Position"
     post:
       tags: [Positions]
-      summary: РЎС‚РІРѕСЂРёС‚Рё РїРѕСЃР°РґСѓ
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PositionCreateRequest'
+      summary: Create a position
       responses:
-        '201':
-          description: РџРѕСЃР°РґСѓ СЃС‚РІРѕСЂРµРЅРѕ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Position'
+        "200":
+          description: Position created.
 
   /positions/{id}:
-    patch:
+    get:
       tags: [Positions]
-      summary: РћРЅРѕРІРёС‚Рё РїРѕСЃР°РґСѓ
+      summary: Get a position
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PositionUpdateRequest'
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: РџРѕСЃР°РґСѓ РѕРЅРѕРІР»РµРЅРѕ
+        "200":
+          description: Position payload.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Position'
-    delete:
-      tags: [Positions]
-      summary: РџСЂРёС…РѕРІР°С‚Рё РїРѕСЃР°РґСѓ
-      description: Soft delete через `is_active=false`; посада не видаляється фізично, щоб старі співробітники не втратили текстове значення `position`.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: РџРѕСЃР°РґСѓ РїСЂРёС…РѕРІР°РЅРѕ
-
-  /mobile/auth/login:
+                $ref: "#/components/schemas/Position"
     post:
-      tags: [MobileAuth]
-      summary: Worker login with employee number, PIN and password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MobileLoginRequest'
+      tags: [Positions]
+      summary: Update a position
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        '200':
-          description: Authenticated worker
+        "200":
+          description: Position updated.
+
+  /product-models:
+    get:
+      tags: [ProductModels]
+      summary: List product models
+      responses:
+        "200":
+          description: Array of product models.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MobileLoginResponse'
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductModel"
+    post:
+      tags: [ProductModels]
+      summary: Create a product model
+      responses:
+        "200":
+          description: Product model created.
+
+  /product-models/{id}:
+    get:
+      tags: [ProductModels]
+      summary: Get a product model
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Product model payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductModel"
+    post:
+      tags: [ProductModels]
+      summary: Update a product model
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Product model updated.
+
+  /route-cards:
+    get:
+      tags: [RouteCards]
+      summary: List route cards
+      responses:
+        "200":
+          description: Array of route cards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RouteCard"
+    post:
+      tags: [RouteCards]
+      summary: Create a route card
+      responses:
+        "200":
+          description: Route card created.
+
+  /route-cards/{id}:
+    get:
+      tags: [RouteCards]
+      summary: Get a route card
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Route card payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteCard"
+    post:
+      tags: [RouteCards]
+      summary: Update a route card
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Route card updated.
 
 components:
+  parameters:
+    IdPath:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+
   schemas:
-    ProductionOrderCreateRequest:
+    ActionRequest:
       type: object
-      properties:
-        order_type:
-          type: string
-          enum: [stock, customer]
-        target_location_id:
-          type: integer
-          nullable: true
-        planned_completion_date:
-          type: string
-          format: date
-          nullable: true
-        lines:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProductionOrderLineCreateRequest'
-      required: [order_type, lines]
-
-    ProductionOrderPatchRequest:
-      type: object
-      properties:
-        customer_name:
-          type: string
-          nullable: true
-        customer_phone:
-          type: string
-          nullable: true
-        customer_email:
-          type: string
-          nullable: true
-        target_location_id:
-          type: integer
-          nullable: true
-        priority:
-          type: string
-          enum: [low, normal, high, urgent]
-        planned_completion_date:
-          type: string
-          format: date
-          nullable: true
-        notes:
-          type: string
-          nullable: true
-
-    ProductionOrderLineCreateRequest:
-      type: object
-      properties:
-        model_id:
-          type: integer
-          nullable: true
-        model_name:
-          type: string
-        model_sku:
-          type: string
-          nullable: true
-        quantity:
-          type: number
-        size:
-          type: string
-          nullable: true
-        notes:
-          type: string
-          nullable: true
-      required: [model_name, quantity]
-
-    ProductionBatchCreateRequest:
-      type: object
-      properties:
-        model_id:
-          type: integer
-        quantity:
-          type: number
-        planned_start_date:
-          type: string
-          format: date
-          nullable: true
-        fabric_type:
-          type: string
-          nullable: true
-        fabric_colors:
-          type: array
-          items:
-            $ref: '#/components/schemas/FabricColorRow'
-        selected_sizes:
-          type: array
-          items:
-            type: string
-        notes:
-          type: string
-          nullable: true
-      required: [model_id, quantity]
-
-    ProductionBatchUpdateRequest:
-      allOf:
-        - $ref: '#/components/schemas/ProductionBatchCreateRequest'
-
-    FabricColorRow:
-      type: object
-      properties:
-        color:
-          type: string
-        rolls:
-          type: number
-      required: [color, rolls]
+      additionalProperties: true
 
     ProductionOrder:
       type: object
       properties:
-        id: { type: integer }
-        order_number: { type: string }
-        order_type: { type: string, enum: [stock, customer] }
-        customer_name: { type: string, nullable: true }
+        id:
+          type: integer
         status:
-        type: string
-        enum: [active, vacation, dismissed, trainee]
-        priority: { type: string }
-        order_date:
           type: string
-          format: date
-        planned_completion_date:
+        order_type:
           type: string
-          format: date
+        quantity:
+          type: integer
+        notes:
+          type: string
           nullable: true
-        total_quantity: { type: number }
-        total_lines: { type: number }
-        notes: { type: string, nullable: true }
+        created_at:
+          type: string
+          format: date-time
+
+    ProductionOrderCreateRequest:
+      type: object
+      required: [quantity]
+      properties:
+        order_type:
+          type: string
+        quantity:
+          type: integer
+        notes:
+          type: string
+
+    ProductionOrderPatchRequest:
+      type: object
+      additionalProperties: true
+
+    ProductionOrderLineCreateRequest:
+      type: object
+      additionalProperties: true
 
     ProductionOrderLine:
       type: object
-      properties:
-        id: { type: integer }
-        order_id: { type: integer }
-        model_id: { type: integer, nullable: true }
-        model_name: { type: string }
-        model_sku: { type: string, nullable: true }
-        size: { type: string, nullable: true }
-        quantity: { type: number }
-        notes: { type: string, nullable: true }
-
-    ProductionBatch:
-      type: object
-      properties:
-        id: { type: integer }
-        batch_number: { type: string }
-        status:
-          type: string
-          enum: [created, preparing, cutting, sewing, overlock, straight_stitch, coverlock, packaging, quality_check, rework, ready, shipped, closed, cancelled]
-        quantity: { type: number }
-        product_model_id: { type: integer, nullable: true }
-        route_card_id: { type: integer, nullable: true }
-        sku: { type: string, nullable: true }
-        fabric_type: { type: string, nullable: true }
-        fabric_color: { type: string, nullable: true }
-        size_variants:
-          type: object
-          nullable: true
-          additionalProperties: true
-          description: >
-            Р”Р»СЏ РЅРѕРІС‹С… РїР°СЂС‚РёР№ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РѕР±СЉРµРєС‚ РІРёРґР° { selected_sizes: [] }.
-            РЎС‚Р°СЂС‹Рµ РїР°СЂС‚РёРё РјРѕРіСѓС‚ С…СЂР°РЅРёС‚СЊ РєР°СЂС‚Сѓ СЂР°Р·РјРµСЂРѕРІ СЃ РєРѕР»РёС‡РµСЃС‚РІР°РјРё.
-        created_at:
-          type: string
-          format: date-time
-          nullable: true
-
-    BatchTask:
-      type: object
-      properties:
-        id: { type: integer }
-        batch_id: { type: integer }
-        stage_id: { type: integer }
-        task_type: { type: string }
-        assigned_role: { type: string }
-        status:
-          type: string
-          enum: [pending, accepted, in_progress, completed, cancelled]
-        accepted_by_employee_id: { type: integer, nullable: true }
-        accepted_at: { type: string, format: date-time, nullable: true }
-        completed_at: { type: string, format: date-time, nullable: true }
-        cancelled_at: { type: string, format: date-time, nullable: true }
-        launched_by_user_id: { type: integer, nullable: true }
-        launched_at: { type: string, format: date-time, nullable: true }
-        notes: { type: string, nullable: true }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-
-    BatchStageTask:
-      type: object
-      properties:
-        id: { type: integer }
-        status:
-          type: string
-          enum: [pending, accepted, in_progress, completed, cancelled]
-        task_type: { type: string, nullable: true }
-        assigned_role: { type: string, nullable: true }
-        launched_at: { type: string, format: date-time, nullable: true }
-        accepted_at: { type: string, format: date-time, nullable: true }
-        completed_at: { type: string, format: date-time, nullable: true }
-        cancelled_at: { type: string, format: date-time, nullable: true }
-        notes: { type: string, nullable: true }
-
-    BatchStageSummary:
-      allOf:
-        - $ref: '#/components/schemas/ProductionStage'
-        - type: object
-          properties:
-            task:
-              nullable: true
-              allOf:
-                - $ref: '#/components/schemas/BatchStageTask'
-            entries_count: { type: integer }
-            quantity_total: { type: integer }
-            latest_entry_at: { type: string, format: date-time, nullable: true }
-            is_current: { type: boolean }
-            is_completed: { type: boolean }
-            entries:
-              type: array
-              items:
-                $ref: '#/components/schemas/TaskEntry'
-
-    BatchStageFlowResponse:
-      type: object
-      properties:
-        batch:
-          $ref: '#/components/schemas/ProductionBatch'
-        stages:
-          type: array
-          items:
-            $ref: '#/components/schemas/BatchStageSummary'
-        current_stage:
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/BatchStageSummary'
-        current_task:
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/BatchStageTask'
-        next_stage:
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/BatchStageSummary'
-        can_transfer_next: { type: boolean }
-        completed_stages: { type: integer }
-        total_entries: { type: integer }
-
-    ProductionStage:
-      type: object
-      properties:
-        id: { type: integer }
-        code: { type: string }
-        name: { type: string }
-        assigned_role: { type: string }
-        sequence_order: { type: integer }
-        color: { type: string, nullable: true }
-        is_active: { type: boolean }
-
-    StageOperation:
-      type: object
-      properties:
-        id: { type: integer }
-        stage_id: { type: integer }
-        code: { type: string }
-        name: { type: string }
-        field_schema:
-          type: array
-          items:
-            type: object
-            properties:
-              key: { type: string }
-              label: { type: string }
-              type:
-                type: string
-                enum: [text, number, select, boolean, date]
-              required: { type: boolean }
-              source: { type: string, nullable: true }
-              placeholder: { type: string, nullable: true }
-            additionalProperties: true
-        sort_order: { type: integer }
-        is_active: { type: boolean }
-
-    ProductionStageWithOperations:
-      allOf:
-        - $ref: '#/components/schemas/ProductionStage'
-        - type: object
-          properties:
-            operations:
-              type: array
-              items:
-                $ref: '#/components/schemas/StageOperation'
-
-    TaskEntry:
-      type: object
-      properties:
-        id: { type: integer }
-        task_id: { type: integer }
-        batch_id: { type: integer }
-        employee_id: { type: integer }
-        stage_id: { type: integer, nullable: true }
-        operation_id: { type: integer, nullable: true }
-        entry_number: { type: integer }
-        quantity: { type: integer, nullable: true }
-        data:
-          type: object
-          additionalProperties: true
-        notes: { type: string, nullable: true }
-        recorded_at: { type: string, format: date-time }
-        source: { type: string, nullable: true }
-        operation_code: { type: string, nullable: true }
-        operation_name: { type: string, nullable: true }
-
-    TaskEntryCreateRequest:
-      type: object
-      properties:
-        operation_id: { type: integer }
-        data:
-          type: object
-          additionalProperties: true
-        notes: { type: string, nullable: true }
-      required: [operation_id, data]
-
-    EmployeeActivityLog:
-      type: object
-      properties:
-        id: { type: integer }
-        employee_id: { type: integer }
-        task_id: { type: integer, nullable: true }
-        batch_id: { type: integer, nullable: true }
-        batch_number: { type: string, nullable: true }
-        stage_code: { type: string, nullable: true }
-        stage_name: { type: string, nullable: true }
-        action: { type: string }
-        quantity: { type: integer, nullable: true }
-        created_at: { type: string, format: date-time }
-
-    CuttingNastil:
-      type: object
-      properties:
-        id: { type: integer }
-        task_id: { type: integer, nullable: true }
-        batch_id: { type: integer }
-        employee_id: { type: integer, nullable: true }
-        nastil_number: { type: string, nullable: true }
-        reel_width_cm: { type: integer, nullable: true }
-        reel_length_m: { type: number, nullable: true }
-        fabric_color: { type: string, nullable: true }
-        weight_kg: { type: number, nullable: true }
-        quantity_per_nastil: { type: integer, nullable: true }
-        remainder_kg: { type: number, nullable: true }
-        notes: { type: string, nullable: true }
-        created_at: { type: string, format: date-time }
-
-    TaskActionRequest:
-      type: object
-      properties:
-        action:
-          type: string
-          enum: [accept, complete]
-      required: [action]
-
-    CuttingNastilCreateRequest:
-      type: object
-      properties:
-        nastil_number: { type: string }
-        reel_width_cm: { type: integer }
-        reel_length_m: { type: number }
-        fabric_color: { type: string }
-        weight_kg: { type: number }
-        quantity_per_nastil: { type: integer }
-        remainder_kg: { type: number }
-      required: [nastil_number, reel_width_cm, reel_length_m, fabric_color, weight_kg, quantity_per_nastil, remainder_kg]
-
-    EmployeeAccess:
-      type: object
-      properties:
-        id: { type: integer }
-        username: { type: string }
-        role: { type: string }
-        is_active: { type: boolean }
-        has_pin: { type: boolean }
-        has_password: { type: boolean }
-
-    Employee:
-      type: object
-      properties:
-        id: { type: integer }
-        full_name: { type: string }
-        employee_number: { type: string, nullable: true }
-        position: { type: string, nullable: true }
-        phone: { type: string, nullable: true }
-        status:
-        type: string
-        enum: [active, vacation, dismissed, trainee]
-        payment_type: { type: string }
-        access:
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/EmployeeAccess'
-
-    EmployeeCreateRequest:
-      type: object
-      properties:
-        full_name: { type: string }
-        employee_number: { type: string }
-        position: { type: string }
-        phone: { type: string }
-        status:
-        type: string
-        enum: [active, vacation, dismissed, trainee]
-        payment_type: { type: string }
-        username: { type: string }
-        role: { type: string }
-        pin: { type: string }
-        password: { type: string }
-        is_active: { type: boolean }
-      required: [full_name, employee_number, position, role, pin, password]
-
-    EmployeeUpdateRequest:
-      type: object
-      properties:
-        full_name: { type: string }
-        employee_number: { type: string }
-        position: { type: string }
-        phone: { type: string }
-        status:
-        type: string
-        enum: [active, vacation, dismissed, trainee]
-        payment_type: { type: string }
-        username: { type: string }
-        role: { type: string }
-        pin: { type: string }
-        password: { type: string }
-        is_active: { type: boolean }
-
-    Position:
-      type: object
-      properties:
-        id: { type: integer }
-        name: { type: string }
-        is_active: { type: boolean }
-        sort_order: { type: integer }
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    PositionCreateRequest:
-      type: object
-      properties:
-        name: { type: string }
-        sort_order: { type: integer, default: 0 }
-        is_active: { type: boolean, default: true }
-      required: [name]
-
-    PositionUpdateRequest:
-      type: object
-      properties:
-        name: { type: string }
-        sort_order: { type: integer }
-        is_active: { type: boolean }
-
-    MobileLoginRequest:
-      type: object
-      properties:
-        employee_number: { type: string }
-        pin: { type: string }
-        password: { type: string }
-      required: [employee_number, pin, password]
-
-    MobileLoginResponse:
-      type: object
-      properties:
-        token: { type: string }
-        role: { type: string }
-        employee:
-          type: object
-          properties:
-            id: { type: integer }
-            full_name: { type: string }
-            employee_number: { type: string, nullable: true }
-            status:
-        type: string
-        enum: [active, vacation, dismissed, trainee]
-
-    ProductModel:
-      type: object
-      properties:
-        id: { type: integer }
-        name: { type: string }
-        sku: { type: string, nullable: true }
-        source: { type: string, nullable: true }
+      additionalProperties: true
 
     ProductionOrderEvent:
       type: object
-      properties:
-        id: { type: integer }
-        action: { type: string }
-        from_status: { type: string, nullable: true }
-        to_status: { type: string, nullable: true }
-        stage_label: { type: string, nullable: true }
-        note: { type: string, nullable: true }
-        payload:
-          type: object
-          nullable: true
-          additionalProperties: true
-        created_by: { type: integer, nullable: true }
-        created_at:
-          type: string
-          format: date-time
+      additionalProperties: true
 
     RequirementsResponse:
       type: object
-      properties:
-        order_id: { type: integer }
-        order_number: { type: string }
-        can_launch: { type: boolean }
-        materials:
-          type: array
-          items:
-            type: object
+      additionalProperties: true
 
-    ActionRequest:
+    Batch:
+      type: object
+      properties:
+        id:
+          type: integer
+        batch_number:
+          type: string
+        status:
+          type: string
+        quantity:
+          type: integer
+        priority:
+          type: string
+        fabric_type:
+          type: string
+          nullable: true
+        fabric_color:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        product_model_id:
+          type: integer
+          nullable: true
+
+    BatchCreateRequest:
+      type: object
+      additionalProperties: true
+
+    BatchUpdateRequest:
+      type: object
+      additionalProperties: true
+
+    LaunchRequest:
       type: object
       properties:
         note:
           type: string
+
+    LaunchResponse:
+      type: object
+      additionalProperties: true
+
+    BatchStagesResponse:
+      type: object
+      additionalProperties: true
+
+    BatchStatusPatchRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [created, cutting, in_progress, completed, cancelled]
+
+    Employee:
+      type: object
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        employee_number:
+          type: string
+          nullable: true
+        position:
+          type: string
+          nullable: true
+        department:
+          type: string
+          nullable: true
+        status:
+          type: string
+
+    EmployeeCreateRequest:
+      type: object
+      additionalProperties: true
+
+    EmployeeUpdateRequest:
+      type: object
+      additionalProperties: true
+
+    Position:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        is_active:
+          type: boolean
+
+    ProductModel:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
           nullable: true
 
-
-
-
-    ProductionStage:
+    RouteCard:
       type: object
       properties:
-        id: { type: integer }
-        code: { type: string }
-        name: { type: string }
-        assigned_role: { type: string }
-        sequence_order: { type: integer }
-        color: { type: string, nullable: true }
-        is_active: { type: boolean }
-        created_at:
+        id:
+          type: integer
+        name:
           type: string
-          format: date-time
-        updated_at:
+        status:
           type: string
-          format: date-time
-
-    StageOperation:
-      type: object
-      properties:
-        id: { type: integer }
-        stage_id: { type: integer }
-        code: { type: string }
-        name: { type: string }
-        field_schema:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-        sort_order: { type: integer }
-        is_active: { type: boolean }
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    TaskEntry:
-      type: object
-      properties:
-        id: { type: integer }
-        task_id: { type: integer }
-        batch_id: { type: integer }
-        employee_id: { type: integer }
-        stage_id: { type: integer }
-        operation_id: { type: integer, nullable: true }
-        entry_number: { type: integer }
-        quantity: { type: integer, nullable: true }
-        data:
-          type: object
-          additionalProperties: true
-        notes: { type: string, nullable: true }
-        recorded_at:
-          type: string
-          format: date-time
-
-    EmployeeActivityLog:
-      type: object
-      properties:
-        id: { type: integer }
-        employee_id: { type: integer }
-        task_id: { type: integer, nullable: true }
-        batch_id: { type: integer, nullable: true }
-        batch_number: { type: string, nullable: true }
-        stage_code: { type: string, nullable: true }
-        stage_name: { type: string, nullable: true }
-        action: { type: string }
-        quantity: { type: integer, nullable: true }
-        created_at:
-          type: string
-          format: date-time
+        product_model_id:
+          type: integer
+          nullable: true

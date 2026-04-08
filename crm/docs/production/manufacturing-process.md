@@ -1,188 +1,94 @@
-# Производственный процесс
+# Manufacturing Process
 
-Этот документ фиксирует текущий поток в `crm` для схемы `shveyka`.
+This document describes the current production workflow implemented in Shveyka.
 
-## Источник истины
+## Source of truth
 
-- BOM хранится в `product_models` и `material_norms`.
-- MRP-снимок по заказу хранится в `production_order_materials`.
-- Маршрутные карты используются только для операций и технологического маршрута.
-- Производственные партии создаются вручную внутри карточки заказа.
+- BOM data lives in `shveyka.product_models` and `shveyka.material_norms`.
+- Material planning snapshots live in `shveyka.production_order_materials`.
+- Route cards describe operations only.
+- Production batches are launched manually from the CRM batch card.
+- Worker execution is recorded in `shveyka.task_entries`.
+- Cutting keeps a compatibility mirror in `shveyka.cutting_nastils`.
 
-## Текущий поток
+## Current flow
 
-1. Заказ создается в разделе `Замовлення`.
-2. Форма вызывает `POST /api/production-orders`.
-3. В базе создаются:
-   - `production_orders` со статусом `draft`
-   - `production_order_lines`
-4. Заказ подтверждается и становится `approved`.
-5. Действие `Запустити у виробництво` переводит заказ в `launched`.
-6. При запуске выполняется расчет потребности по BOM.
-7. Снимок потребности сохраняется в `production_order_materials`.
-8. Партии не создаются автоматически.
-9. Партии создаются вручную в карточке `Виробниче замовлення`.
-10. Партия редактируется и удаляется только в статусе `created`.
-
-## Mermaid: поток заказа
+1. Create a production order in the CRM app.
+2. Approve the order.
+3. Launch the order when it is ready for execution.
+4. Calculate material requirements and store the snapshot.
+5. Create a batch manually from the order.
+6. Launch the batch to create a `batch_tasks` row.
+7. Worker-app consumes the task.
+8. Workers record entries and, for cutting, nastils.
+9. CRM shows the stage tree, task history, and entry totals from the shared DB.
 
 ```mermaid
 flowchart TD
-    A["UI: /orders"] --> B["POST /api/production-orders"]
-    B --> C["production_orders.status = draft"]
-    B --> D["production_order_lines"]
-    C --> E["Approve"]
-    E --> F["production_orders.status = approved"]
-    F --> G["Launch"]
-    G --> H["POST /api/production-orders/{id}/launch"]
-    H --> I["calculate_material_requirements()"]
-    H --> J["production_orders.status = launched"]
-    I --> K["production_order_materials"]
-    J --> L["UI: /production-orders"]
-    L --> M["Manual batch creation"]
+  A["Production order"] --> B["Approve order"]
+  B --> C["Launch order"]
+  C --> D["production_order_materials snapshot"]
+  D --> E["Create batch"]
+  E --> F["POST /api/batches/{id}/launch"]
+  F --> G["batch_tasks row"]
+  G --> H["worker-app task queue"]
+  H --> I["task_entries"]
+  H --> J["cutting_nastils (legacy mirror)"]
 ```
 
-## Mermaid: жизненный цикл партии
+## Batch lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> created
-    created --> created: edit
-    created --> deleted: delete
-    created --> in_production: transfer to next stage
-    in_production --> completed: complete
+  [*] --> created
+  created --> cutting: launch
+  cutting --> in_progress: worker accepts task
+  in_progress --> completed: task finished
+  created --> cancelled: cancel
+  cutting --> cancelled: cancel
+  in_progress --> cancelled: cancel
 ```
 
-## Mermaid: BOM и MRP
+## Task lifecycle
 
-```mermaid
-flowchart LR
-    M["product_models"] --> N["material_norms"]
-    N --> O["calculate_material_requirements()"]
-    O --> P["production_order_materials"]
-    P --> Q["UI: requirements tab"]
-    R["route_cards"] --> S["operations only"]
-```
+- `pending` - task was created but not accepted yet.
+- `accepted` - worker claimed the task.
+- `in_progress` - worker started recording entries.
+- `completed` - work on the task is done.
+- `cancelled` - task is stopped and should not receive more entries.
 
-## Карточка партии
+## What the batch card shows
 
-В карточке партии сейчас фиксируются:
-
-- модель заказа
-- дата формирования
-- ткань
-- цвета ткани и количество рулонов по каждому цвету
-- выбранные размеры модели
-- примечания
-
-## Правила редактирования
-
-- Запущенный заказ можно перевести в `launched`, даже если материалы уходят в минус.
-- Партии редактируются и удаляются только пока их статус `created`.
-- После передачи партии на следующий этап она становится частью производственного потока.
-
-## Отдельно по `route_cards`
-
-- `route_cards` не хранят BOM.
-- `route_cards` не участвуют в расчете потребности.
-- `route_cards` нужны только как задел под операции и технологический маршрут.
-
-## Связанные экраны
-
-- [src/app/(dashboard)/orders/page.tsx](/D:/Швейка/crm/src/app/%28dashboard%29/orders/page.tsx)
-- [src/app/(dashboard)/production-orders/page.tsx](/D:/Швейка/crm/src/app/%28dashboard%29/production-orders/page.tsx)
-- [src/app/(dashboard)/production-orders/[id]/page.tsx](/D:/Швейка/crm/src/app/%28dashboard%29/production-orders/%5Bid%5D/page.tsx)
-- [src/app/(dashboard)/batches/page.tsx](/D:/Швейка/crm/src/app/%28dashboard%29/batches/page.tsx)
-
-## Mermaid: просмотр партии
+- batch number and status
+- product model and quantity
+- stage tree from `GET /api/batches/{id}/stages`
+- active task for each stage
+- recorded entries per stage
+- current stage, next stage, and completion summary
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant UI as /batches page
-    participant API as Next API
-    participant DB as Supabase
+  participant CRM as CRM batch card
+  participant API as /api/batches/{id}/stages
+  participant DB as Supabase
+  participant W as worker-app
 
-    U->>UI: Открывает партию
-    UI->>API: GET /api/batches/{id}
-    API->>DB: read production_batches + model
-    DB-->>API: batch payload
-    API-->>UI: batch details
-    UI-->>U: center modal
-    U->>UI: Edit / Delete
-    UI->>API: PUT or DELETE /api/batches/{id}
-    API->>DB: update or delete batch
+  CRM->>API: Open batch
+  API->>DB: read batch, stages, tasks, entries
+  DB-->>API: stage tree + totals
+  API-->>CRM: render stage tree
+  W->>DB: submit task entries
+  CRM->>API: refresh stage tree
+  API->>DB: read updated totals
+  DB-->>API: refreshed state
 ```
 
-## Mermaid: handoff to cutting
+## Compatibility notes
 
-```mermaid
-sequenceDiagram
-    participant M as Production Head
-    participant CRM as CRM /batches
-    participant API as POST /api/batches/{id}/launch
-participant DB as Supabase shveyka
-    participant W as Worker App /tasks
-    participant S as Cutting worker
-
-    M->>CRM: Click "Launch to cutting"
-    CRM->>API: POST launch
-API->>DB: create shveyka.batch_tasks
-    API->>DB: update production_batches.status = cutting
-    DB-->>API: batch + task saved
-    API-->>CRM: launch success
-    W->>DB: GET /api/mobile/tasks
-    DB-->>W: pending cutting task
-    S->>W: Accept task
-    W->>DB: POST /api/mobile/tasks/{id}
-    S->>W: Add roll / nastil facts
-W->>DB: POST /api/mobile/tasks/{id}/nastils
-    S->>W: Complete cutting
-    W->>DB: POST /api/mobile/tasks/{id} action=complete
-```
-
-## Employee Access
-
-- CRM manages the employee directory in `shveyka.employees`.
-- `shveyka.users` stores worker-app credentials separately from the employee profile.
-- Worker login requires `employee_number + PIN + password`.
-- The assigned role controls which tasks are visible in the mobile app.
-- When an employee is deactivated, the linked worker access is disabled too.
-- The CRM staff list hides employees with `status = dismissed` by default; the record remains available in the database for audit and history.
-
-## Positions Directory
-
-- Employee forms use `shveyka.positions` as the source of truth for the `Посада` field.
-- The CRM positions screen at `/employees/positions` lets HR add, edit, and retire positions.
-- New employees and employee edits must choose a position from the list instead of entering it manually.
-- If `shveyka.positions` is missing during deployment, the UI falls back to the seeded positions list until the migration is applied.
-
-## Stage → Operation → Entry
-
-- The next production model splits work into stage, operation, and entry.
-- A stage is the top-level manufacturing step, such as `Розкрій` or `Пошив`.
-- An operation is a concrete task inside a stage, such as `Настил` or `Зшивання`.
-- An entry is one worker submission for that operation, stored as structured JSON plus audit metadata.
-- The employee cabinet can later aggregate entries into a timeline per stage and per batch.
-- `batch_tasks.stage_id` is the source of truth for the task stage.
-- `assigned_role` remains only as a compatibility field during the transition window.
-- `GET /api/mobile/stages` feeds the worker UI with active stages and their operations.
-- `POST /api/mobile/tasks/{id}/entries` stores one operation entry and mirrors cutting nastil data for backward compatibility.
-- `GET /api/batches/{id}/stages` returns the full stage tree for the CRM batch card.
-- The CRM batch card opens as a centered modal overlay; clicking a stage row opens a dedicated stage modal on top of the batch modal.
-- For `cutting`, the CRM drill-in can open a dedicated nastil modal from the stage modal so the batch flow shows the actual rolls that were entered by the worker.
-- The nastil modal renders the order size grid from the batch order/model sizes, and each size cell shows the count for that roll.
-- `POST /api/batches/{id}/stages` creates the next stage task after the current stage is completed.
-- The worker page renders fields from `stage_operations.field_schema`; adding a new operation is a data change, not a UI rewrite.
-
-```mermaid
-flowchart TD
-    A["Партія"] --> B["batch_task"]
-    B --> C["batch_tasks.stage_id"]
-    C --> D["stage_operations"]
-    D --> E["task_entries"]
-    E --> F["employee_activity_log"]
-    F --> G["Кабінет працівника"]
-```
-
-- `production_batches.status` uses `shveyka.batch_status`; later-stage values are stored in the same schema, not in `public`.
+- `route_cards` remain a separate planning artifact.
+- `stage_operations` define the worker form schema.
+- Cutting still supports legacy nastil data, but the canonical execution log is
+  `task_entries`.
+- The CRM and worker apps must agree on schema boundaries:
+  - `shveyka` for core application data
+  - `public` only for legacy/shared data

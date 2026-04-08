@@ -1,262 +1,150 @@
-# Clean Architecture для производственного контура CRM
+# Clean Architecture for Shveyka
 
-Этот документ фиксирует текущее разделение ответственности в `crm`.
+This document captures the current boundaries of the monorepo and how the CRM
+and worker apps share state through Supabase.
 
-## Контекст
+## Current shape
 
-Производственный контур сейчас строится так:
-
-- `Замовлення` создается и подтверждается как производственный заказ.
-- BOM живет в справочнике моделей.
-- MRP считает потребность под конкретный заказ.
-- Партия создается вручную внутри карточки заказа.
-- Маршрутные карты нужны только для операций и технологического маршрута.
-
-## Mermaid
+- CRM owns planning, dispatch, and master-data management.
+- worker-app owns shop-floor execution.
+- Supabase is the system of record.
+- `shveyka` is the primary schema.
+- `public` still contains a few legacy/shared tables, most notably
+  `operation_entries`.
 
 ```mermaid
 graph TD
-    subgraph Presentation["Presentation"]
-        A["src/app/(dashboard)/orders/page.tsx"]
-        B["src/app/(dashboard)/production-orders/page.tsx"]
-        C["src/app/(dashboard)/production-orders/[id]/page.tsx"]
-        D["src/app/(dashboard)/product-models/page.tsx"]
-        E["src/app/(dashboard)/batches/page.tsx"]
-        F["src/components/Sidebar.tsx"]
-    end
+  subgraph Presentation["Presentation"]
+    CRMUI["CRM dashboard"]
+    WorkerUI["worker-app mobile UI"]
+  end
 
-    subgraph Application["Application"]
-        G["src/app/api/production-orders/route.ts"]
-        H["src/app/api/production-orders/[id]/route.ts"]
-        I["src/app/api/production-orders/[id]/lines/route.ts"]
-        J["src/app/api/production-orders/[id]/events/route.ts"]
-        K["src/app/api/production-orders/[id]/requirements/route.ts"]
-        L["src/app/api/production-orders/[id]/[action]/route.ts"]
-        M["src/app/api/production-orders/[id]/batches/route.ts"]
-        N["src/app/api/batches/route.ts"]
-        O["src/app/api/batches/[id]/route.ts"]
-        P["src/app/api/batches/[id]/pipeline/route.ts"]
-        Q["src/app/api/batches/[id]/status/route.ts"]
-        R["src/app/api/product-models/*"]
-    end
+  subgraph Application["Application"]
+    CRMAPI["crm/src/app/api/*"]
+    WorkerAPI["worker-app/src/app/api/mobile/*"]
+  end
 
-    subgraph Domain["Domain"]
-        S["shveyka.production_orders"]
-        T["shveyka.production_order_lines"]
-        U["shveyka.production_order_events"]
-        V["shveyka.production_order_materials"]
-        W["shveyka.production_batches"]
-        X["shveyka.product_models"]
-        Y["shveyka.material_norms"]
-        Z["shveyka.route_cards"]
-    end
+  subgraph Domain["Domain / Data"]
+    Orders["shveyka.production_orders"]
+    OrderLines["shveyka.production_order_lines"]
+    OrderEvents["shveyka.production_order_events"]
+    Requirements["shveyka.production_order_materials"]
+    Batches["shveyka.production_batches"]
+    Tasks["shveyka.batch_tasks"]
+    Stages["shveyka.production_stages"]
+    StageOps["shveyka.stage_operations"]
+    Entries["shveyka.task_entries"]
+    Nastils["shveyka.cutting_nastils"]
+    Users["shveyka.users"]
+    Employees["shveyka.employees"]
+    Legacy["public.operation_entries"]
+  end
 
-    subgraph Infrastructure["Infrastructure"]
-        AA["Supabase schema shveyka"]
-        AB["Supabase RPC / SQL"]
-        AC["Auth / role checks"]
-        AD["Warehouse balances"]
-    end
+  subgraph Infrastructure["Infrastructure"]
+    Supabase["Supabase service role / RLS"]
+    JWT["JWT cookies"]
+    Bcrypt["bcryptjs password verification"]
+  end
 
-    F --> A
-    F --> B
-    F --> C
-    F --> D
-    F --> E
-    A --> G
-    B --> G
-    C --> H
-    C --> I
-    C --> J
-    C --> K
-    C --> L
-    C --> M
-    E --> N
-    E --> O
-    E --> P
-    E --> Q
-    D --> R
-
-    G --> AA
-    H --> AA
-    I --> AA
-    J --> AA
-    K --> AB
-    L --> AB
-    M --> AA
-    N --> AA
-    O --> AA
-    P --> AA
-    Q --> AA
-    R --> AA
-
-    AA --> S
-    AA --> T
-    AA --> U
-    AA --> V
-    AA --> W
-    AA --> X
-    AA --> Y
-    AA --> Z
-    AB --> Y
-    AB --> V
-    AC --> G
-    AC --> H
-    AC --> I
-    AC --> J
-    AC --> K
-    AC --> L
-    AC --> M
-    AC --> N
-    AC --> O
-    AD --> V
+  CRMUI --> CRMAPI
+  WorkerUI --> WorkerAPI
+  CRMAPI --> Supabase
+  WorkerAPI --> Supabase
+  Supabase --> Orders
+  Supabase --> OrderLines
+  Supabase --> OrderEvents
+  Supabase --> Requirements
+  Supabase --> Batches
+  Supabase --> Tasks
+  Supabase --> Stages
+  Supabase --> StageOps
+  Supabase --> Entries
+  Supabase --> Nastils
+  Supabase --> Users
+  Supabase --> Employees
+  Supabase --> Legacy
+  JWT --> WorkerAPI
+  Bcrypt --> WorkerAPI
+  Bcrypt --> CRMAPI
 ```
 
-## Правила разбиения
+## Layer rules
 
-1. Presentation-слой показывает данные и вызывает API.
-2. Application-слой реализует сценарии:
-   - создание заказа
-   - подтверждение
-   - запуск
-   - проверка потребности
-   - ручное создание и редактирование партии
-3. Domain-слой хранит бизнес-сущности и таблицы.
-4. Infrastructure-слой отвечает за Supabase, RPC, права доступа и остатки склада.
+1. Presentation reads and renders data. It should not know about Supabase keys
+   or schema rules.
+2. Application routes validate input, perform authorization, and orchestrate
+   writes.
+3. Domain tables store business state; route handlers should not invent new
+   state machines in the UI.
+4. Infrastructure owns Supabase access, JWT signing, password hashing, and
+   audit logging.
 
-## Domain-сущности
+## Auth model
 
-- `production_orders`
-- `production_order_lines`
-- `production_order_events`
-- `production_order_materials`
-- `production_batches`
-- `product_models`
-- `material_norms`
-- `route_cards`
+- CRM login:
+  - `POST /api/auth/login`
+  - server-side lookup through the service role
+  - checks `shveyka.users`
+  - returns a session cookie for the CRM app
+- Worker login:
+  - `POST /api/mobile/auth/login`
+  - requires `employee_number`, `PIN`, and password
+  - checks the linked employee row and the worker credential row
+  - signs a JWT cookie used by the mobile app
 
-## Как разделены ответственности
+## Key flows
 
-### BOM / справочник моделей
+### Production order flow
 
-- Модель определяет состав изделия.
-- `material_norms` хранит нормы расхода материалов на 1 единицу.
-- MRP считает потребность от модели, а не от маршрутной карты.
+1. Create a draft production order.
+2. Approve it.
+3. Launch it.
+4. Snapshot material requirements into `production_order_materials`.
+5. Create batches manually from the order when the production head is ready.
 
-### MRP / расчет потребности
+### Batch launch flow
 
-- `calculate_material_requirements()` разворачивает BOM под конкретный заказ.
-- Результат сохраняется в `production_order_materials`.
-- Экран заказа читает потребность из MRP-слоя.
+1. Launching a batch creates a `batch_tasks` row.
+2. The batch status moves to `cutting`.
+3. The worker app picks up the task from `mobile/tasks`.
+4. Cutting workers record nastils and task entries.
 
-### Route Cards
+### Worker execution flow
 
-- Route cards не содержат материалов.
-- Route cards не участвуют в расчете потребности.
-- Route cards оставлены как задел под операции и технологический маршрут.
-- `employees` хранит справочник людей и должностей.
-- `users` хранит worker-app доступы: `username`, `hashed_pin`, `hashed_password`, `role`, `is_active`.
-
-### Production Orders
-
-- Заказ создается как `draft`.
-- После подтверждения становится `approved`.
-- После запуска становится `launched`.
-- Запуск не создает партии автоматически.
-- Партии создаются вручную в карточке заказа.
-
-### Production Batches
-
-- Партия создается под конкретную модель заказа.
-- Партия содержит параметры ткани, цветов, рулонов и размеров.
-- Партия редактируется и удаляется только в статусе `created`.
-
-## Связанные API
-
-- `GET /api/production-orders`
-- `POST /api/production-orders`
-- `PATCH /api/production-orders/{id}`
-- `POST /api/production-orders/{id}/approve`
-- `POST /api/production-orders/{id}/launch`
-- `GET /api/production-orders/{id}/requirements`
-- `POST /api/production-orders/{id}/batches`
-- `GET /api/batches`
-- `POST /api/batches`
-- `GET /api/batches/{id}`
-- `PUT /api/batches/{id}`
-- `DELETE /api/batches/{id}`
-
-## Cutting Task Flow
-
-- CRM keeps `production_batches` in the `shveyka` schema.
-- Shared execution data lives in `shveyka.batch_tasks` and `shveyka.cutting_nastils`.
-- `POST /api/batches/{id}/launch` creates a `shveyka.batch_tasks` row and moves the batch to `cutting`.
-- Worker app reads only `cutting` tasks for the `cutting` role.
-- Worker app writes actual cutting facts directly into `cutting_nastils` and the task state.
-- Batch facts remain the single visible source of truth for the production head; no separate cutting journal is introduced.
-
-## Employee Access Flow
-
-- CRM manages `employees` as the personnel directory.
-- `users` stores authentication credentials for worker app access.
-- Worker login requires `employee_number + PIN + password`.
-- The role in `users.role` decides which stage tasks are visible in worker app.
-- Deactivating an employee disables the linked worker access too.
-- The public employee list excludes rows with `status = dismissed`; dismissed employees remain in the database for audit and history.
-
-## Positions Directory
-
-- `shveyka.positions` is the canonical positions directory used by employee forms.
-- Employee create and edit screens load positions via `GET /api/positions` and use a select field instead of free text.
-- Position CRUD lives in CRM at `/employees/positions`, so HR can maintain the list without editing employee records directly.
-- The positions API falls back to a seeded list if the table is not yet present, so the UI stays usable during migrations.
+1. Worker opens the task.
+2. Worker submits stage-specific entries through `task_entries`.
+3. Cutting still mirrors legacy data into `cutting_nastils` for compatibility.
+4. The batch card aggregates stage, task, and entry history from the shared
+   Supabase state.
 
 ```mermaid
 sequenceDiagram
-    participant H as Production Head
-    participant CRM as CRM /employees
-    participant API as /api/employees
-    participant DB as Supabase shveyka
-    participant W as Worker login
+  participant PM as Production head
+  participant CRM as CRM /batches
+  participant API as CRM API
+  participant DB as Supabase
+  participant W as worker-app
+  participant Worker as Cutting worker
 
-    H->>CRM: Create employee + role + PIN + password
-    CRM->>API: POST /api/employees
-    API->>DB: insert employees + users
-    DB-->>API: access saved
-    API-->>CRM: employee created
-    W->>API: POST /api/mobile/auth/login
-    API->>DB: verify employee_number + PIN + password
-    DB-->>API: token + role
-    API-->>W: authenticated session
+  PM->>CRM: Launch batch
+  CRM->>API: POST /api/batches/{id}/launch
+  API->>DB: create batch_tasks + set batch.status = cutting
+  DB-->>API: batch and task saved
+  API-->>CRM: launch success
+  W->>DB: GET /api/mobile/tasks
+  DB-->>W: pending cutting task
+  Worker->>W: Accept task
+  Worker->>W: POST /api/mobile/tasks/{id}/nastils
+  Worker->>W: POST /api/mobile/tasks/{id}/entries
+  W->>DB: task_entries + cutting_nastils
 ```
 
-## Stage Model
+## Design rules to keep
 
-- `production_stages` is the canonical directory for manufacturing stages.
-- `stage_operations` defines the operations inside a stage and the dynamic `field_schema` for the worker form.
-- `task_entries` stores every recorded worker action as a unified entry stream.
-- `employee_activity_log` stores a denormalized feed for the employee cabinet and audit views.
-- The new model keeps the worker UI dynamic: a stage selects operations, and each operation defines the fields to render.
-- `batch_tasks.stage_id` is the source of truth for the task stage.
-- `assigned_role` remains only as a compatibility field during the transition window.
-- Worker API reads the directory from `GET /api/mobile/stages` and persists submissions through `POST /api/mobile/tasks/{id}/entries`.
-- The worker task detail page consumes `stage.operations` plus `field_schema`, so new operations can be added by seed data and migrations rather than UI code.
-- Cutting remains compatible through `cutting_nastils`, but the unified path is `task_entries`.
-- CRM batch card opens as a centered modal overlay and uses `GET /api/batches/{id}/stages` to render the stage tree inside the base card.
-- Clicking a stage row opens a dedicated stage modal on top of the batch modal, replacing the stage list view.
-- For `cutting`, the stage modal can open a dedicated nastil modal derived from `operation_code = nastil`, so production heads can inspect each roll in a separate overlay without expanding inline.
-- The nastil modal also renders the batch size grid from the order/model sizes, and each cell shows the quantity per size for that roll.
-- `POST /api/batches/{id}/stages` moves the batch to the next step after the current stage is completed.
-
-```mermaid
-flowchart TD
-    A["production_batches"] --> B["batch_tasks"]
-    B --> C["batch_tasks.stage_id"]
-    C --> D["stage_operations"]
-    B --> E["task_entries"]
-    D --> E
-    E --> F["employee_activity_log"]
-    F --> G["Worker cabinet / CRM stage blocks"]
-```
-
-- `production_batches.status` uses `shveyka.batch_status`; stage-transfer values are stored in the same schema, not in `public`.
+- Keep CRM and worker flows in separate route groups.
+- Keep Supabase access server-side.
+- Use `service_role` only where the route must bypass public RLS.
+- Treat `production_batches.status` as lifecycle state and `batch_tasks.status`
+  as execution state.
+- Prefer adding a new route or service over smuggling logic into a page
+  component.
