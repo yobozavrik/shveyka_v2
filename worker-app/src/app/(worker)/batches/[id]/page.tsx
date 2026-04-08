@@ -44,6 +44,20 @@ interface BatchInfo {
   } | null;
 }
 
+type BatchTaskRow = {
+  id: number;
+  batch_id: number;
+  assigned_role: string;
+  status: string;
+  accepted_by_employee_id: number | null;
+  stage?: {
+    id: number;
+    code: string;
+    name: string;
+    assigned_role: string;
+  } | null;
+};
+
 // SizePicker modal
 function SizePickerModal({
   sizes,
@@ -179,6 +193,7 @@ export default function BatchPipelinePage() {
   const [showRCModal, setShowRCModal] = useState(false);
   const [sizeModal, setSizeModal] = useState<{ op: PipelineOp; prevOp: PipelineOp | null } | null>(null);
   const [freeMode, setFreeMode] = useState(false);
+  const [taskRouteMap, setTaskRouteMap] = useState<Record<string, number>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -194,6 +209,26 @@ export default function BatchPipelinePage() {
       setPipeline(pipeData.pipeline || []);
       setTotalQty(pipeData.total_qty || 0);
       setFreeMode(!!pipeData.free_mode);
+
+      const tasksRes = await fetch('/api/mobile/tasks', { cache: 'no-store' });
+      if (tasksRes.ok) {
+        const tasksJson = await tasksRes.json();
+        const rows = Array.isArray(tasksJson) ? (tasksJson as BatchTaskRow[]) : [];
+        const map: Record<string, number> = {};
+
+        rows
+          .filter((task) => Number(task.batch_id) === Number(id))
+          .forEach((task) => {
+            const stageCode = String(task.stage?.code || task.assigned_role || '').trim().toLowerCase();
+            if (stageCode && !map[stageCode]) {
+              map[stageCode] = task.id;
+            }
+          });
+
+        setTaskRouteMap(map);
+      } else {
+        setTaskRouteMap({});
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -221,10 +256,17 @@ export default function BatchPipelinePage() {
       .catch(err => console.error('Auth check error:', err));
   }, [loadData]);
 
-  const handleOperationPress = (op: PipelineOp, _index: number) => {
+  const handleOperationPress = async (op: PipelineOp, _index: number) => {
     if (op.status === 'locked') return;
 
-    // ВСІ операції тепер йдуть на універсальну матрицю
+    const stageCode = String(op.operation_type || op.code || '').trim().toLowerCase();
+    const taskId = stageCode ? taskRouteMap[stageCode] : null;
+
+    if (taskId) {
+      router.push(`/tasks/${taskId}`);
+      return;
+    }
+
     router.push(`/matrix?batchId=${id}&opId=${op.id}&opName=${encodeURIComponent(op.name)}`);
   };
 
@@ -295,7 +337,7 @@ export default function BatchPipelinePage() {
         {/* Quick Action for Cutting */}
         {batch?.status === 'created' && pipeline[0] && (pipeline[0].operation_type === 'cutting' || pipeline[0].name.toLowerCase().includes('розкрій')) && (
           <button
-            onClick={() => handleOperationPress(pipeline[0], 0)}
+            onClick={() => void handleOperationPress(pipeline[0], 0)}
             className="w-full bg-emerald-600 active:bg-emerald-700 py-5 rounded-2xl mb-6 flex items-center justify-center gap-3 shadow-lg shadow-emerald-500/20"
           >
             <Play className="w-6 h-6 fill-white" />
@@ -331,7 +373,7 @@ export default function BatchPipelinePage() {
               return (
                 <button
                   key={op.id}
-                  onClick={() => handleOperationPress(op, index)}
+                  onClick={() => void handleOperationPress(op, index)}
                   disabled={op.status === 'locked'}
                   className={clsx(
                     'w-full text-left bg-[var(--bg-card)] border-2 rounded-2xl p-4 transition-colors',
