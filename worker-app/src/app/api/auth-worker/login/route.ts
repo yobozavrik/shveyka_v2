@@ -30,7 +30,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Працівника не знайдено' }, { status: 404 });
     }
 
-    if (employee.status !== 'active') {
+    const employeeStatus = (employee.status || 'active').toLowerCase();
+    if (employeeStatus !== 'active') {
       return NextResponse.json({ error: 'Доступ для співробітника вимкнено' }, { status: 403 });
     }
 
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
         name: employee.full_name,
         number: employee.employee_number,
         role: user.role,
+        status: employee.status || 'active',
       },
     });
 

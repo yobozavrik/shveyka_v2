@@ -11,7 +11,7 @@ export async function GET() {
     // 1. Employee
     const { data: emp } = await supabaseAdmin
       .from('employees')
-      .upsert({ employee_number: '001', full_name: 'Admin' }, { onConflict: 'employee_number' })
+      .upsert({ employee_number: '001', full_name: 'Admin', status: 'active' }, { onConflict: 'employee_number' })
       .select().single();
 
     // 2. User
