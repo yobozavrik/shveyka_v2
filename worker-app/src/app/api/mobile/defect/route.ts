@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Обов'язкове поле: batch_id" }, { status: 400 });
   }
 
-  const supabaseAdmin = getSupabaseAdmin('public');
+  const supabaseAdmin = getSupabaseAdmin('shveyka');
   const { data, error } = await supabaseAdmin
     .from('defects')
     .insert({

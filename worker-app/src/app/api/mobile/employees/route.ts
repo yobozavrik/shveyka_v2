@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 
 // Public list of employees for worker login (PIN-based)
 export async function GET() {
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
   
   const { data, error } = await shveykaClient
     .from('employees')

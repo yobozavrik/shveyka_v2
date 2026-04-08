@@ -10,7 +10,7 @@ export async function GET(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   const { data: batch, error } = await shveykaClient
     .from('production_batches')
@@ -50,7 +50,7 @@ export async function PATCH(
   if (quantity !== undefined) updateData.quantity = quantity;
   if (status !== undefined) updateData.status = status;
 
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   const { data, error } = await shveykaClient
     .from('production_batches')

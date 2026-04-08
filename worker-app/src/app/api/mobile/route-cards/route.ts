@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   let isPrivileged = ['master', 'supervisor', 'admin', 'administrator', 'manager'].includes((user.role || '').toLowerCase());
   

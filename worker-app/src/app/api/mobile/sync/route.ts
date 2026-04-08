@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ synced: 0, failed: 0, results: [] });
   }
 
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
   const results: Array<{ local_id: string; status: 'ok' | 'duplicate' | 'error'; id?: number; error?: string }> = [];
   let synced = 0;
   let failed = 0;
