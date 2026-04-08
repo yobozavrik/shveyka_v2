@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ChevronRight, RefreshCw, Loader2, Package2, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
+import { extractSelectedSizes } from '@/lib/sizeVariants';
 
 interface Batch {
   id: number;
@@ -151,15 +152,18 @@ export default function BatchesPage() {
                 </div>
 
                 {/* Size variants */}
-                {batch.size_variants && Object.keys(batch.size_variants).length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {Object.entries(batch.size_variants).map(([size, qty]) => (
-                      <span key={size} className="bg-[var(--bg-card2)] text-[var(--text-1)] text-xs px-2 py-0.5 rounded-full font-bold">
-                        {size}: {qty}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const sizes = extractSelectedSizes(batch.size_variants);
+                  return sizes.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {sizes.map((size) => (
+                        <span key={size} className="bg-[var(--bg-card2)] text-[var(--text-1)] text-xs px-2 py-0.5 rounded-full font-bold">
+                          {size}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               <ChevronRight className="w-5 h-5 text-[var(--text-3)] shrink-0 mt-1" />
