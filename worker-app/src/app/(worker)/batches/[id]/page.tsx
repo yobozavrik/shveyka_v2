@@ -7,6 +7,7 @@ import {
   ChevronRight, Play, Tag, ShieldCheck
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { extractSelectedSizes } from '@/lib/sizeVariants';
 
 interface SizeQty { size: string; confirmed_qty: number; submitted_qty: number }
 interface PipelineOp {
@@ -320,15 +321,18 @@ export default function BatchPipelinePage() {
                   {batch.fabric_color && <span>{batch.fabric_color}</span>}
                   {batch.fabric_type && <span>{batch.fabric_type}</span>}
                 </div>
-                {batch.size_variants && Object.keys(batch.size_variants).length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {Object.entries(batch.size_variants).map(([sz, qty]) => (
-                      <span key={sz} className="bg-[var(--bg-card2)] text-xs font-bold px-2 py-0.5 rounded-full text-[var(--text-1)]">
-                        {sz}: {qty}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const sizes = extractSelectedSizes(batch.size_variants);
+                  return sizes.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {sizes.map((sz) => (
+                        <span key={sz} className="bg-[var(--bg-card2)] text-xs font-bold px-2 py-0.5 rounded-full text-[var(--text-1)]">
+                          {sz}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>
