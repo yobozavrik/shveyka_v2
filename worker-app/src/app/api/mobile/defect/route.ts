@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -13,6 +13,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Обов'язкове поле: batch_id" }, { status: 400 });
   }
 
+  const supabaseAdmin = getSupabaseAdmin('public');
   const { data, error } = await supabaseAdmin
     .from('defects')
     .insert({
@@ -31,4 +32,3 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data, { status: 201 });
 }
-

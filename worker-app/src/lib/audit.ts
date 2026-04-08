@@ -1,4 +1,4 @@
-import { supabaseAdmin } from './supabase';
+import { getSupabaseAdmin } from './supabase';
 
 /**
  * Записує дію робітника або майстра в загальний журнал аудиту.
@@ -31,6 +31,7 @@ export async function recordAuditLog(params: {
       user_agent: ua
     };
 
+    const supabaseAdmin = getSupabaseAdmin('public');
     const { error } = await supabaseAdmin
       .schema('public')
       .from('audit_logs')

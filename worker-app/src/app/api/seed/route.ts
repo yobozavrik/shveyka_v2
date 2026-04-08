@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
 
 export async function GET() {
   try {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash('0000', salt);
+    const supabaseAdmin = getSupabaseAdmin('public');
 
     // 1. Employee
     const { data: emp } = await supabaseAdmin

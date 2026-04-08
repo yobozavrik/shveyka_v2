@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
 
 export async function PATCH(
@@ -18,6 +18,7 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let isPrivileged = ['master', 'supervisor', 'admin', 'administrator'].includes((user.role || '').toLowerCase());
+  const supabaseAdmin = getSupabaseAdmin('public');
   
   if (!isPrivileged && user.employeeId) {
     const { data: emp } = await supabaseAdmin
