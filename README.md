@@ -8,6 +8,10 @@ Shveyka is a manufacturing execution system split into two Next.js apps:
 
 Supabase is the system of record for both apps.
 
+## Rights
+
+Copyright (c) 2026 Dmytro Tovstytskyi. All rights reserved.
+
 ## Repository layout
 
 ```mermaid
