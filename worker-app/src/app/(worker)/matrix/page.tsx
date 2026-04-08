@@ -61,11 +61,17 @@ function MatrixForm() {
           return;
         }
 
-        const target = tasks.find((task: any) => {
-          if (String(task.batch_id) !== String(batchId)) return false;
+        const batchTasks = tasks.filter((task: any) => String(task.batch_id) === String(batchId));
+        const cutAliases = ['cutting', 'cut', 'rozkriy', 'rozkrij', 'rozkrij', 'розкрій', 'розкрой'];
+        const preferredStatuses = ['accepted', 'in_progress', 'pending'];
+
+        const target = batchTasks.find((task: any) => {
           const code = String(task?.stage?.code || task?.assigned_role || '').toLowerCase();
-          return code === 'cutting';
-        });
+          return cutAliases.some((alias) => code.includes(alias));
+        }) ||
+        batchTasks.find((task: any) => preferredStatuses.includes(String(task?.status || '').toLowerCase())) ||
+        batchTasks[0] ||
+        null;
 
         if (target?.id) {
           router.replace(`/tasks/${target.id}`);
