@@ -3,7 +3,15 @@ import { getProductionInsights, askAssistant } from '@/lib/ai/assistant';
 import { getAuth } from '@/lib/auth-server';
 import { AgenticOrchestrator } from '@/lib/ai/agentic/application/AgenticOrchestrator';
 
-const orchestrator = new AgenticOrchestrator();
+let orchestrator: AgenticOrchestrator | null = null;
+
+function getOrchestrator(): AgenticOrchestrator {
+  if (!orchestrator) {
+    orchestrator = new AgenticOrchestrator();
+  }
+
+  return orchestrator;
+}
 
 export async function GET(request: Request) {
   try {
@@ -20,12 +28,12 @@ export async function GET(request: Request) {
     const query = searchParams.get('q');
 
     if (action === 'explain-order' && orderId) {
-      const explanation = await orchestrator.explainOrder(parseInt(orderId));
+      const explanation = await getOrchestrator().explainOrder(parseInt(orderId));
       return NextResponse.json({ explanation, version: '2.1.0' });
     }
 
     if (action === 'explain-payroll') {
-      const explanation = await orchestrator.explainPayroll(
+      const explanation = await getOrchestrator().explainPayroll(
         employeeId ? parseInt(employeeId) : undefined,
         periodId ? parseInt(periodId) : undefined
       );
@@ -33,17 +41,17 @@ export async function GET(request: Request) {
     }
 
     if (action === 'get-sop' && sopName) {
-      const content = await orchestrator.retrieveSOP(sopName);
+      const content = await getOrchestrator().retrieveSOP(sopName);
       return NextResponse.json({ content, version: '2.1.0' });
     }
 
     if (action === 'search' && query) {
-      const results = await orchestrator.searchKnowledge(query, 5);
+      const results = await getOrchestrator().searchKnowledge(query, 5);
       return NextResponse.json({ results, version: '2.1.0' });
     }
 
     if (mode === 'agentic') {
-      const insights = await orchestrator.getSmartInsights();
+      const insights = await getOrchestrator().getSmartInsights();
       return NextResponse.json({ insights, version: '2.0.0-agentic' });
     }
 
@@ -66,12 +74,12 @@ export async function POST(request: Request) {
     const { question, history, mode, action, orderId, employeeId, periodId } = await request.json();
 
     if (action === 'explain-order' && orderId) {
-      const explanation = await orchestrator.explainOrder(orderId);
+      const explanation = await getOrchestrator().explainOrder(orderId);
       return NextResponse.json({ explanation, version: '2.1.0' });
     }
 
     if (action === 'explain-payroll') {
-      const explanation = await orchestrator.explainPayroll(employeeId, periodId);
+      const explanation = await getOrchestrator().explainPayroll(employeeId, periodId);
       return NextResponse.json({ explanation, version: '2.1.0' });
     }
     
@@ -80,7 +88,7 @@ export async function POST(request: Request) {
     }
 
     if (mode === 'agentic') {
-      const answer = await orchestrator.handleAgenticQuery(question, history || []);
+      const answer = await getOrchestrator().handleAgenticQuery(question, history || []);
       return NextResponse.json({ answer, version: '2.0.0-agentic' });
     }
 

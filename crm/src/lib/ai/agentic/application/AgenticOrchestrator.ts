@@ -8,15 +8,23 @@ import { KnowledgeTools } from '../infrastructure/KnowledgeTools';
 
 export class AgenticOrchestrator {
   private repo: SupabaseRepository;
-  private ai: AIProvider;
+  private ai: AIProvider | null;
   private knowledgeRepo: KnowledgeRepository;
   private tools: KnowledgeTools;
 
   constructor() {
     this.repo = new SupabaseRepository();
-    this.ai = AIProviderFactory.getProvider();
+    this.ai = null;
     this.knowledgeRepo = new KnowledgeRepository();
     this.tools = new KnowledgeTools();
+  }
+
+  private getAi(): AIProvider {
+    if (!this.ai) {
+      this.ai = AIProviderFactory.getProvider();
+    }
+
+    return this.ai;
   }
 
   private readSkill(fileName: string): string {
@@ -63,7 +71,7 @@ export class AgenticOrchestrator {
       Генерируй ответ строго на РУССКОМ языке.
     `;
 
-    return await this.ai.generateResponse(prompt);
+    return await this.getAi().generateResponse(prompt);
   }
 
   async searchKnowledge(query: string, limit: number = 5) {
@@ -91,7 +99,7 @@ export class AgenticOrchestrator {
       Отвечай кратко и по существу на русском языке.
     `;
 
-    return await this.ai.generateResponse(prompt, history);
+    return await this.getAi().generateResponse(prompt, history);
   }
 
   async handleAgenticQuery(message: string, history: any[] = []) {
@@ -114,7 +122,7 @@ export class AgenticOrchestrator {
     `;
 
     const fullPrompt = `${systemPrompt}\n\nВопрос: ${message}`;
-    const response = await this.ai.generateResponse(fullPrompt, history);
+    const response = await this.getAi().generateResponse(fullPrompt, history);
 
     const toolCallMatch = response.match(/\{"tool":\s*"([^"]+)",\s*"params":\s*(\{[^}]+\})\}/);
     
@@ -131,7 +139,7 @@ export class AgenticOrchestrator {
 
           Сформулируй ответ пользователю на основе этих данных.
         `;
-        return await this.ai.generateResponse(resultPrompt, history);
+        return await this.getAi().generateResponse(resultPrompt, history);
       }
     }
 
@@ -163,7 +171,7 @@ export class AgenticOrchestrator {
       Ответ должен быть кратким и информативным на русском языке.
     `;
 
-    return await this.ai.generateResponse(prompt);
+    return await this.getAi().generateResponse(prompt);
   }
 
   async explainPayroll(employeeId?: number, periodId?: number) {
@@ -191,7 +199,7 @@ export class AgenticOrchestrator {
       Ответ должен быть кратким и информативным на русском языке.
     `;
 
-    return await this.ai.generateResponse(prompt);
+    return await this.getAi().generateResponse(prompt);
   }
 
   async retrieveSOP(sopName: string) {
