@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Shveyka Worker App
 
-## Getting Started
+Worker app for shop-floor execution in the Shveyka MES.
 
-First, run the development server:
+## What it does
+
+- worker login
+- task queue and task detail views
+- stage entry capture
+- cutting nastils
+- master approvals
+- offline sync support
+
+## Local development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Default local port: `3005`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Required environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+JWT_SECRET=
+```
 
-## Learn More
+## API surface
 
-To learn more about Next.js, take a look at the following resources:
+- `POST /api/mobile/auth/login`
+- `GET /api/mobile/auth/me`
+- `POST /api/mobile/tasks/{id}/entries`
+- `POST /api/mobile/tasks/{id}/nastils`
+- `GET /api/mobile/tasks`
+- `GET /api/mobile/stages`
+- `GET /api/mobile/batches/{id}`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+See the full contract in [docs/api/mobile.openapi.yaml](./docs/api/mobile.openapi.yaml).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Data boundaries
 
-## Deploy on Vercel
+- `shveyka` is the main application schema.
+- `public` still hosts a few legacy/shared tables.
+- `task_entries` is the canonical execution log.
+- `cutting_nastils` remains a compatibility mirror for cutting.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Related docs
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Worker API index](./docs/api/README.md)
+- [Root README](../README.md)
+- [CRM docs](../crm/docs/api/README.md)
