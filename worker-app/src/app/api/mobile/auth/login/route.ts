@@ -41,7 +41,8 @@ export async function POST(request: Request) {
       .from('employees')
       .select('id, full_name, employee_number, status')
       .eq('employee_number', employeeNumber)
-      .limit(1);
+      .or('status.eq.active,status.is.null')
+      .order('id', { ascending: true });
 
     const employee = employees && employees.length > 0 ? employees[0] : null;
     if (empError || !employee) {
