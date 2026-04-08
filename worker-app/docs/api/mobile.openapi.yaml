@@ -1,0 +1,504 @@
+openapi: 3.0.3
+info:
+  title: Shveyka Worker Mobile API
+  version: 1.0.0
+  description: >
+    Mobile worker API for shop-floor execution, task handling, cutting nastils,
+    and entry capture.
+servers:
+  - url: /api
+
+tags:
+  - name: Auth
+  - name: Tasks
+  - name: Batches
+  - name: Entries
+  - name: Master
+  - name: Sync
+  - name: Config
+  - name: Defects
+
+paths:
+  /mobile/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in a worker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MobileLoginRequest"
+      responses:
+        "200":
+          description: Authenticated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileLoginResponse"
+
+  /mobile/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out the current worker
+      responses:
+        "200":
+          description: Logged out.
+
+  /mobile/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the current worker session
+      responses:
+        "200":
+          description: Current worker payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileMeResponse"
+
+  /mobile/config:
+    get:
+      tags: [Config]
+      summary: Get app configuration
+      responses:
+        "200":
+          description: Runtime config.
+
+  /mobile/stages:
+    get:
+      tags: [Tasks]
+      summary: List active stages for the mobile app
+      responses:
+        "200":
+          description: Stage list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Stage"
+
+  /mobile/tasks:
+    get:
+      tags: [Tasks]
+      summary: List visible worker tasks
+      responses:
+        "200":
+          description: Task list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+
+  /mobile/tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Get a worker task with entries and stage metadata
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Task payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetailResponse"
+    post:
+      tags: [Tasks]
+      summary: Update task state
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskActionRequest"
+      responses:
+        "200":
+          description: Task updated.
+
+  /mobile/tasks/{id}/entries:
+    get:
+      tags: [Entries]
+      summary: List task entries for a worker task
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Entry list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskEntry"
+    post:
+      tags: [Entries]
+      summary: Create a task entry
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskEntryCreateRequest"
+      responses:
+        "200":
+          description: Entry stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskEntry"
+
+  /mobile/tasks/{id}/nastils:
+    get:
+      tags: [Entries]
+      summary: List cutting nastils for a task
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Nastil list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Nastil"
+    post:
+      tags: [Entries]
+      summary: Create a cutting nastil
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NastilCreateRequest"
+      responses:
+        "200":
+          description: Nastil stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Nastil"
+
+  /mobile/batches:
+    get:
+      tags: [Batches]
+      summary: List batches visible to the worker app
+      responses:
+        "200":
+          description: Batch list.
+
+  /mobile/batches/{id}:
+    get:
+      tags: [Batches]
+      summary: Get a batch
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Batch payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Batch"
+
+  /mobile/batches/{id}/pipeline:
+    get:
+      tags: [Batches]
+      summary: Get the batch pipeline snapshot
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Pipeline snapshot.
+
+  /mobile/batches/{id}/route-card:
+    get:
+      tags: [Batches]
+      summary: Get the route card for a batch
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Route card payload.
+
+  /mobile/batches/{id}/cutting-summary:
+    get:
+      tags: [Batches]
+      summary: Get the cutting summary for a batch
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Cutting summary.
+
+  /mobile/master/pending:
+    get:
+      tags: [Master]
+      summary: List pending master approvals
+      responses:
+        "200":
+          description: Pending items.
+
+  /mobile/master/approve:
+    post:
+      tags: [Master]
+      summary: Approve a worker entry as a master
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MasterApproveRequest"
+      responses:
+        "200":
+          description: Approval stored.
+
+  /mobile/employees:
+    get:
+      tags: [Config]
+      summary: List employees for the mobile app
+      responses:
+        "200":
+          description: Employee list.
+
+  /mobile/defect:
+    post:
+      tags: [Defects]
+      summary: Report a defect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DefectRequest"
+      responses:
+        "200":
+          description: Defect stored.
+
+  /mobile/sync:
+    post:
+      tags: [Sync]
+      summary: Sync offline worker data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncRequest"
+      responses:
+        "200":
+          description: Sync result.
+
+  /ping:
+    get:
+      tags: [Config]
+      summary: Health check
+      responses:
+        "200":
+          description: Pong.
+
+  /seed:
+    get:
+      tags: [Config]
+      summary: Seed helper
+      responses:
+        "200":
+          description: Seed status.
+
+components:
+  parameters:
+    IdPath:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+
+  schemas:
+    MobileLoginRequest:
+      type: object
+      required: [employee_number, pin, password]
+      properties:
+        employee_number:
+          type: string
+        pin:
+          type: string
+        password:
+          type: string
+
+    MobileLoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        role:
+          type: string
+        employee:
+          $ref: "#/components/schemas/Employee"
+
+    MobileMeResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/WorkerSession"
+        employee:
+          $ref: "#/components/schemas/Employee"
+
+    WorkerSession:
+      type: object
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        role:
+          type: string
+        employeeId:
+          type: integer
+          nullable: true
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        batch_id:
+          type: integer
+        stage_id:
+          type: integer
+        status:
+          type: string
+        assigned_role:
+          type: string
+        launched_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    TaskDetailResponse:
+      type: object
+      additionalProperties: true
+
+    TaskActionRequest:
+      type: object
+      additionalProperties: true
+
+    TaskEntryCreateRequest:
+      type: object
+      required: [batch_id, operation_id, quantity]
+      properties:
+        batch_id:
+          type: integer
+        operation_id:
+          type: integer
+        quantity:
+          type: integer
+        defect_quantity:
+          type: integer
+          default: 0
+        metric_value:
+          type: number
+          default: 0
+        size:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        local_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+
+    TaskEntry:
+      type: object
+      additionalProperties: true
+
+    NastilCreateRequest:
+      type: object
+      required:
+        - nastil_number
+        - reel_width_cm
+        - reel_length_m
+        - fabric_color
+        - weight_kg
+        - quantity_per_nastil
+        - remainder_kg
+      properties:
+        nastil_number:
+          type: string
+        reel_width_cm:
+          type: number
+        reel_length_m:
+          type: number
+        fabric_color:
+          type: string
+        weight_kg:
+          type: number
+        quantity_per_nastil:
+          type: integer
+        remainder_kg:
+          type: number
+        notes:
+          type: string
+          nullable: true
+
+    Nastil:
+      type: object
+      additionalProperties: true
+
+    Batch:
+      type: object
+      additionalProperties: true
+
+    Stage:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        assigned_role:
+          type: string
+        sequence_order:
+          type: integer
+        is_active:
+          type: boolean
+
+    Employee:
+      type: object
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        employee_number:
+          type: string
+          nullable: true
+        status:
+          type: string
+
+    MasterApproveRequest:
+      type: object
+      additionalProperties: true
+
+    DefectRequest:
+      type: object
+      additionalProperties: true
+
+    SyncRequest:
+      type: object
+      additionalProperties: true
