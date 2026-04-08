@@ -29,6 +29,7 @@ function MatrixForm() {
   const [error, setError] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [submitMode, setSubmitMode] = useState<'submitted' | 'approved'>('submitted');
+  const [redirecting, setRedirecting] = useState(true);
 
   // Initialize values from hook's initial quantities ONLY ONCE
   useEffect(() => {
@@ -37,6 +38,52 @@ function MatrixForm() {
       setInitialized(true);
     }
   }, [initialQuantities, initialized]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function redirectToTaskCard() {
+      if (!batchId) {
+        setRedirecting(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/mobile/tasks', { cache: 'no-store' });
+        if (!response.ok) {
+          setRedirecting(false);
+          return;
+        }
+
+        const tasks = await response.json();
+        if (cancelled || !Array.isArray(tasks)) {
+          setRedirecting(false);
+          return;
+        }
+
+        const target = tasks.find((task: any) => {
+          if (String(task.batch_id) !== String(batchId)) return false;
+          const code = String(task?.stage?.code || task?.assigned_role || '').toLowerCase();
+          return code === 'cutting';
+        });
+
+        if (target?.id) {
+          router.replace(`/tasks/${target.id}`);
+          return;
+        }
+      } catch (err) {
+        console.error('Matrix redirect failed:', err);
+      }
+
+      if (!cancelled) setRedirecting(false);
+    }
+
+    void redirectToTaskCard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [batchId, router]);
 
   const updateVal = (size: string, field: keyof SizeValues, val: string) => {
     setVals(prev => ({
@@ -138,6 +185,14 @@ function MatrixForm() {
       <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
     </div>
   );
+
+  if (redirecting) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      </div>
+    );
+  }
 
   if (success) {
     return (
