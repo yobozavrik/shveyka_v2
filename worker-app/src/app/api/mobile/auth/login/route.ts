@@ -10,7 +10,7 @@ interface EmployeeRow {
   id: number;
   full_name: string;
   employee_number: string | null;
-  status: string;
+  status: string | null;
 }
 
 interface UserRow {
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Працівника не знайдено' }, { status: 404 });
     }
 
-    if (employee.status !== 'active') {
+    const employeeStatus = (employee.status || 'active').toLowerCase();
+    if (employeeStatus !== 'active') {
       return NextResponse.json({ error: 'Доступ для співробітника вимкнено' }, { status: 403 });
     }
 
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
         id: employee.id,
         full_name: employee.full_name,
         employee_number: employee.employee_number,
-        status: employee.status,
+        status: employee.status || 'active',
       },
     });
 
