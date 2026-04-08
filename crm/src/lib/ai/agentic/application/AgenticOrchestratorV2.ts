@@ -9,17 +9,25 @@ import { AuditLogger } from '../audit/AuditLogger';
 
 export class AgenticOrchestratorV2 {
   private repo: SupabaseRepository;
-  private ai: AIProvider;
+  private ai: AIProvider | null;
   private toolRegistry: ToolRegistry;
   private policyGuard: PolicyGuard;
   private auditLogger: AuditLogger;
 
   constructor(userRole: UserRole = 'manager') {
     this.repo = new SupabaseRepository();
-    this.ai = AIProviderFactory.getProvider();
+    this.ai = null;
     this.toolRegistry = createToolRegistry();
     this.policyGuard = new PolicyGuard(userRole);
     this.auditLogger = new AuditLogger();
+  }
+
+  private getAi(): AIProvider {
+    if (!this.ai) {
+      this.ai = AIProviderFactory.getProvider();
+    }
+
+    return this.ai;
   }
 
   private readSkill(fileName: string): string {
@@ -71,7 +79,7 @@ export class AgenticOrchestratorV2 {
       `;
 
       const fullPrompt = `${systemPrompt}\n\nВопрос: ${message}`;
-      const response = await this.ai.generateResponse(fullPrompt, history);
+      const response = await this.getAi().generateResponse(fullPrompt, history);
 
       const toolCallMatch = response.match(/\{"tool":\s*"([^"]+)",\s*"params":\s*(\{[^}]+\})\}/);
       
@@ -122,7 +130,7 @@ export class AgenticOrchestratorV2 {
                 - Действие: что делать
               `;
               
-              finalAnswer = await this.ai.generateResponse(resultPrompt, history);
+              finalAnswer = await this.getAi().generateResponse(resultPrompt, history);
             }
           } catch (error: any) {
             console.error('Tool execution error:', error);
@@ -174,6 +182,6 @@ export class AgenticOrchestratorV2 {
       Генерируй ответ строго на РУССКОМ языке.
     `;
 
-    return await this.ai.generateResponse(prompt);
+    return await this.getAi().generateResponse(prompt);
   }
 }

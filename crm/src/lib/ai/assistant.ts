@@ -1,8 +1,17 @@
 // Gemini Assistant Service V2 -> Universal AI Assistant Service
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { AIProviderFactory } from './agentic/infrastructure/AIProviderFactory';
+import { AIProvider } from './agentic/infrastructure/AIProvider';
 
-const ai = AIProviderFactory.getProvider();
+let aiProvider: AIProvider | null = null;
+
+function getAiProvider(): AIProvider {
+  if (!aiProvider) {
+    aiProvider = AIProviderFactory.getProvider();
+  }
+
+  return aiProvider;
+}
 
 export async function getProductionInsights() {
   try {
@@ -49,7 +58,7 @@ export async function getProductionInsights() {
       Дай краткие инсайты (2-3) на РУССКОМ языке. Будь конструктивен.
     `;
 
-    return await ai.generateResponse(prompt);
+    return await getAiProvider().generateResponse(prompt);
   } catch (error: any) {
     console.error('AI Error:', error);
     return `Ошибка: ${error.message || 'Ошибка генерации'}`;
@@ -58,7 +67,7 @@ export async function getProductionInsights() {
 
 export async function askAssistant(question: string, history: any[] = []) {
   try {
-    return await ai.generateResponse(question, history);
+    return await getAiProvider().generateResponse(question, history);
   } catch (error: any) {
     console.error('Chat Error:', error);
     return `Ошибка чата: ${error.message}`;

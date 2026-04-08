@@ -10,7 +10,6 @@
     "knowledge:ingest": "npx ts-node -e \"require('./src/lib/ai/knowledge/KnowledgeIngester').ingestKnowledge().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })\""
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.100.0",
     "axios": "^1.13.6",
