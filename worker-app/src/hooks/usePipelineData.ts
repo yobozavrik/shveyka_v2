@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { extractSelectedSizes, extractSizeVariantQuantities } from '@/lib/sizeVariants';
 
 interface SizeQty {
   size: string;
@@ -19,7 +20,7 @@ interface BatchInfo {
   id: number;
   batch_number: string;
   quantity: number;
-  size_variants: Record<string, number>;
+  size_variants: Record<string, unknown>;
   product_models: { name: string } | null;
 }
 
@@ -78,7 +79,8 @@ export function usePipelineData(batchId: string | null, opId: string | null) {
           incoming[sz.size] = sz.confirmed_qty;
         });
       } else if (batchData.size_variants) {
-        Object.entries(batchData.size_variants).forEach(([size, qty]) => {
+        const variantMap = extractSizeVariantQuantities(batchData.size_variants);
+        Object.entries(variantMap).forEach(([size, qty]) => {
           incoming[size] = Number(qty);
         });
       }
@@ -96,7 +98,9 @@ export function usePipelineData(batchId: string | null, opId: string | null) {
 
       // FALLBACK: If first operation and grid is still empty, add default sizes
       if (curIdx === 0 && Object.keys(dict).length === 0) {
-        ['S', 'M', 'L', 'XL', '2XL'].forEach(sz => {
+        const selectedSizes = extractSelectedSizes(batchData.size_variants);
+        const fallbackSizes = selectedSizes.length > 0 ? selectedSizes : ['S', 'M', 'L', 'XL', '2XL'];
+        fallbackSizes.forEach(sz => {
           dict[sz] = { qty: '', defect: '', metric: '', local_id: null };
         });
       }
