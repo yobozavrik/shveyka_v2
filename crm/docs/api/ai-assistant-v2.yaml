@@ -1,0 +1,64 @@
+openapi: 3.0.0
+info:
+  title: Shveika AI Assistant API
+  description: API для взаимодействия с интеллектуальным помощником производства "Швейка" (v2).
+  version: 2.0.0
+servers:
+  - url: /api/ai
+    description: Локальный сервер разработки
+
+paths:
+  /assistant:
+    post:
+      summary: Получить инсайты или ответ на вопрос от ИИ-ассистента
+      operationId: askAssistant
+      parameters:
+        - name: mode
+          in: query
+          description: Режим работы (classic или agentic)
+          schema:
+            type: string
+            enum: [classic, agentic]
+            default: classic
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: Сообщение или вопрос пользователя
+                history:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [user, model]
+                      content:
+                        type: string
+                context_type:
+                  type: string
+                  enum: [production, inventory, general]
+                  default: production
+      responses:
+        '200':
+          description: Успешный ответ от ИИ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                    description: Текстовый ответ ассистента в формате v2 (3-30-300)
+                  version:
+                    type: string
+                    example: "2.0.0-agentic"
+        '401':
+          description: Ошибка авторизации
+        '500':
+          description: Внутренняя ошибка сервера (ошибка Gemini или Supabase)

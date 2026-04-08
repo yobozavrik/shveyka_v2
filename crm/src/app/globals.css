@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base:    #fafafa;
+  --bg-card:    #ffffff;
+  --bg-card2:   #f8fafc;
+  --bg-sidebar: #ffffff;
+  --border:     #e2e8f0;
+  --text-1:     #020617;
+  --text-2:     #64748b;
+  --text-3:     #94a3b8;
+  --primary:    #4f46e5;
+  --ring:       rgba(79, 70, 229, 0.1);
+  --shadow:     0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.dark {
+  --bg-base:    #020617; /* Slate-950 */
+  --bg-card:    #0f172a; /* Slate-900 */
+  --bg-card2:   #1e293b; /* Slate-800 */
+  --bg-sidebar: #0f172a;
+  --border:     #1e293b;
+  --text-1:     #f8fafc;
+  --text-2:     #94a3b8;
+  --text-3:     #64748b;
+  --primary:    #6366f1; /* Indigo-500 */
+  --ring:       rgba(99, 102, 241, 0.1);
+  --shadow:     0 1px 3px 0 rgb(0 0 0 / 0.4);
+  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.5);
+}
+
+/* Поддержка Light/Dark через переменные */
+body {
+  background: var(--bg-base);
+  color: var(--text-1);
+  font-family: var(--font-fira-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-mono, [class*="font-mono"] {
+  font-family: var(--font-fira-code), monospace;
+}
+
+* { border-color: var(--border); }
+
+label {
+  color: var(--text-2);
+  font-weight: 500;
+  font-size: 0.75rem;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+input, select, textarea {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  background: var(--bg-card);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+::selection {
+  background: var(--ring);
+  color: var(--primary);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
