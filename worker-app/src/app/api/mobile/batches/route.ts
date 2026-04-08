@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const status = searchParams.get('status') || 'in_progress';
   const limit = parseInt(searchParams.get('limit') || '50');
 
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   let query = shveykaClient
     .from('production_batches')

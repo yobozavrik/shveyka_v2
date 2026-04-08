@@ -61,7 +61,7 @@ export async function GET(
 
   const { id } = await params;
   const batchId = parseInt(id);
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   // 1. Get batch info (we still need quantity and size variants)
   const { data: batch, error: batchErr } = await shveykaClient

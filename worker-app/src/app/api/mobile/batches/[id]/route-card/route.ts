@@ -18,7 +18,7 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let isPrivileged = ['master', 'supervisor', 'admin', 'administrator'].includes((user.role || '').toLowerCase());
-  const supabaseAdmin = getSupabaseAdmin('public');
+  const supabaseAdmin = getSupabaseAdmin('shveyka');
   
   if (!isPrivileged && user.employeeId) {
     const { data: emp } = await supabaseAdmin

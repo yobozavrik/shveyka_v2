@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   // Fetch operations from shveyka schema sorted by sort_order
   const { data: operations, error } = await shveykaClient

@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get('limit') || '20');
   const batchId = searchParams.get('batch_id');
 
-  const shveykaClient = getSupabaseAdmin('public');
+  const shveykaClient = getSupabaseAdmin('shveyka');
 
   let query = shveykaClient
     .from('operation_entries')
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       notes, 
       local_id 
     } = result.data;
-    const shveykaClient = getSupabaseAdmin('public');
+    const shveykaClient = getSupabaseAdmin('shveyka');
 
     // Offline dedup by local_id
     if (local_id) {

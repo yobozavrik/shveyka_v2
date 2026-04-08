@@ -13,7 +13,7 @@ export async function DELETE(
   const id = parseInt(idParam);
   if (isNaN(id)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-  const supabaseAdmin = getSupabaseAdmin('public');
+  const supabaseAdmin = getSupabaseAdmin('shveyka');
 
   const { data: entry, error: fetchError } = await supabaseAdmin
     .from('operation_entries')
