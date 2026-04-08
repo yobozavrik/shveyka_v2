@@ -14,6 +14,7 @@ import {
   SquarePen,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { extractSelectedSizes, extractSizeVariantQuantities } from '@/lib/sizeVariants';
 
 type FieldSchema = {
   key: string;
@@ -105,17 +106,13 @@ function parseColors(value?: string | null) {
 }
 
 function parseSizes(value: any): string[] {
-  return value && Array.isArray(value.selected_sizes)
-    ? value.selected_sizes.map(String).filter(Boolean)
-    : [];
+  return extractSelectedSizes(value);
 }
 
 function parseLegacySizes(value: any): Array<[string, number]> {
   if (!value || Array.isArray(value)) return [];
 
-  return Object.entries(value).filter(
-    ([key, entry]) => key !== 'selected_sizes' && typeof entry === 'number',
-  ) as Array<[string, number]>;
+  return Object.entries(extractSizeVariantQuantities(value)) as Array<[string, number]>;
 }
 
 function getFields(schema: any) {

@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, Loader2, AlertCircle, Save, Package } from 'lucide-react';
+import { extractSelectedSizes } from '@/lib/sizeVariants';
 
 interface BatchInfo {
   id: number;
@@ -42,15 +43,21 @@ function CuttingForm() {
         setBatch(data);
         
         // Use planned values OR default list from the photo
-        const defaultSizes = ['S', 'M', 'L', 'XL', '2XL'];
         const dict: Record<string, string> = {};
         
-        if (data.size_variants && Object.keys(data.size_variants).length > 0) {
+        const selectedSizes = extractSelectedSizes(data.size_variants);
+        if (selectedSizes.length > 0) {
+          selectedSizes.forEach((size) => {
+            dict[size] = '';
+          });
+        } else if (data.size_variants && Object.keys(data.size_variants).length > 0) {
           Object.entries(data.size_variants).forEach(([size, qty]) => {
-            dict[size] = String(qty);
+            if (size !== 'selected_sizes' && size !== 'sizes') {
+              dict[size] = String(qty);
+            }
           });
         } else {
-          defaultSizes.forEach(s => { dict[s] = ''; });
+          ['S', 'M', 'L', 'XL', '2XL'].forEach(s => { dict[s] = ''; });
         }
         setQuantities(dict);
       } catch (e: any) {

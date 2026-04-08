@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import { extractSelectedSizes, extractSizeVariantQuantities } from '@/lib/sizeVariants';
 
 export interface SizeQty {
   size: string;
@@ -139,7 +140,8 @@ export async function GET(
       const prevConfirmedSizes = entryMap[prevOp.id]?.confirmed || {};
       for (const sz of Object.keys(prevConfirmedSizes)) sizeSet.add(sz);
     } else if (batch.size_variants) {
-      for (const sz of Object.keys(batch.size_variants)) sizeSet.add(sz);
+      for (const sz of extractSelectedSizes(batch.size_variants)) sizeSet.add(sz);
+      for (const sz of Object.keys(extractSizeVariantQuantities(batch.size_variants))) sizeSet.add(sz);
     }
 
     const sizes: SizeQty[] = sortSizes(
