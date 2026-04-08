@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Введіть логін та пароль' }, { status: 400 });
     }
 
-    const supabase = await createServerClient();
+    const supabase = await createServerClient(true);
 
     const { data: user, error } = await supabase
       .from('users')
