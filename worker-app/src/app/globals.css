@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base:  #f1f5f9;
+  --bg-card:  #ffffff;
+  --bg-card2: #f8fafc;
+  --border:   #e2e8f0;
+  --accent:   #059669;
+  --text-1:   #0f172a;
+  --text-2:   #475569;
+  --text-3:   #94a3b8;
+}
+
+.dark {
+  --bg-base:  #020617;
+  --bg-card:  #0f172a;
+  --bg-card2: #1e293b;
+  --border:   rgba(148,163,184,0.12);
+  --accent:   #10b981;
+  --text-1:   #f1f5f9;
+  --text-2:   #94a3b8;
+  --text-3:   #475569;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-1);
+  overscroll-behavior: none;
+  font-family: var(--font-fira-sans), system-ui, sans-serif;
+}
+
+.font-mono {
+  font-family: var(--font-fira-code), monospace;
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] { -moz-appearance: textfield; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
