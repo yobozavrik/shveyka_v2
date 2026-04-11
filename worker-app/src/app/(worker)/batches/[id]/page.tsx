@@ -268,6 +268,20 @@ export default function BatchPipelinePage() {
       return;
     }
 
+    // For cutting ops: use cutting-task endpoint directly (works even if tasks API returned 401)
+    if (stageCode === 'cutting' || op.name.toLowerCase().includes('розкрій')) {
+      try {
+        const res = await fetch(`/api/mobile/batches/${id}/cutting-task`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.task?.id) {
+            router.push(`/tasks/${data.task.id}`);
+            return;
+          }
+        }
+      } catch { /* fallthrough */ }
+    }
+
     router.push(`/matrix?batchId=${id}&opId=${op.id}&opName=${encodeURIComponent(op.name)}`);
   };
 
