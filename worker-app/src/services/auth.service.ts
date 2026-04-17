@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { 
-  signAccessToken, 
-  generateRefreshToken, 
+import {
+  signAccessToken,
+  generateRefreshToken,
   saveRefreshToken,
 } from '@/lib/auth';
 import { WorkerLoginInput } from '@shveyka/shared';
@@ -12,19 +12,22 @@ export class AuthService {
 
     const { data: employee, error } = await supabase
       .from('employees')
-      .select('id, full_name, role, pin_code, status')
+      .select('id, full_name, pin_code, status')
       .eq('pin_code', input.pin)
       .eq('status', 'active')
       .single();
 
     if (error || !employee) {
+      if (error) {
+        console.error('[AuthService.login] Employee lookup failed:', error);
+      }
       return { success: false, error: 'Невірний PIN-код', status: 401 };
     }
 
     const token = await signAccessToken({
       userId: employee.id, // In worker app, userId is often employeeId
       username: employee.full_name,
-      role: employee.role || 'worker',
+      role: 'worker',
       employeeId: employee.id,
     });
 
@@ -38,8 +41,8 @@ export class AuthService {
       user: {
         id: employee.id,
         name: employee.full_name,
-        role: employee.role || 'worker',
-      }
+        role: 'worker',
+      },
     };
   }
 }
