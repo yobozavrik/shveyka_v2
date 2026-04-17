@@ -31,7 +31,7 @@ export default function PaymentsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-black/5 dark:bg-white/5 border-b border-[var(--border)] text-[10px] font-bold text-[var(--text-3)] uppercase tracking-wider">
+              <tr className="bg-[var(--bg-card2)] border-b border-[var(--border)] text-[10px] font-bold text-[var(--text-3)] uppercase tracking-wider">
                 <th className="px-6 py-4">Отримувач</th>
                 <th className="px-6 py-4">Дата</th>
                 <th className="px-6 py-4">Статус</th>
@@ -41,7 +41,7 @@ export default function PaymentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)] text-sm">
-              <tr className="hover:bg-black/2.5 dark:hover:bg-white/2.5 transition-colors group">
+              <tr className="hover:bg-[var(--bg-hover)] transition-colors group">
                 <td className="px-6 py-4">
                   <div className="font-bold text-[var(--text-1)]">КиївЕнерго</div>
                   <div className="text-[10px] text-[var(--text-3)]">Оренда</div>
@@ -60,7 +60,7 @@ export default function PaymentsPage() {
                   </button>
                 </td>
               </tr>
-              <tr className="hover:bg-black/2.5 dark:hover:bg-white/2.5 transition-colors group">
+              <tr className="hover:bg-[var(--bg-hover)] transition-colors group">
                 <td className="px-6 py-4">
                   <div className="font-bold text-[var(--text-1)]">ФОП Степаненко П.</div>
                   <div className="text-[10px] text-[var(--text-3)]">Постачальник</div>

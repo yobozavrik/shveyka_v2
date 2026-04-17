@@ -77,7 +77,7 @@ export default function KeyCRMPage() {
           <button
             onClick={handleCatalogSync}
             disabled={catalogSyncing}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-card)] hover:bg-black/8 dark:hover:bg-white/8 disabled:opacity-50 rounded-xl text-sm font-bold transition-all border border-[var(--border)]"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] disabled:opacity-50 rounded-xl text-sm font-bold transition-all border border-[var(--border)]"
           >
             {catalogSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
             {catalogSyncing ? 'Синхронізація товарів...' : 'Синхронізувати Товари'}
@@ -120,15 +120,15 @@ export default function KeyCRMPage() {
       {/* Stats cards */}
       {logs.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-black/5 dark:bg-white/5 border border-[var(--border)] rounded-2xl p-5">
+          <div className="bg-[var(--bg-card2)] border border-[var(--border)] rounded-2xl p-5">
             <div className="text-xs text-[var(--text-2)] mb-1">Всього синхронізацій</div>
             <div className="text-2xl font-black">{logs.length}</div>
           </div>
-          <div className="bg-black/5 dark:bg-white/5 border border-[var(--border)] rounded-2xl p-5">
+          <div className="bg-[var(--bg-card2)] border border-[var(--border)] rounded-2xl p-5">
             <div className="text-xs text-[var(--text-2)] mb-1">Остання синхронізація</div>
             <div className="text-lg font-bold">{new Date(logs[0].synced_at).toLocaleString('uk-UA')}</div>
           </div>
-          <div className="bg-black/5 dark:bg-white/5 border border-[var(--border)] rounded-2xl p-5">
+          <div className="bg-[var(--bg-card2)] border border-[var(--border)] rounded-2xl p-5">
             <div className="text-xs text-[var(--text-2)] mb-1">Успішних</div>
             <div className="text-2xl font-black text-green-400">{logs.filter(l => l.status === 'success').length}</div>
           </div>
@@ -146,7 +146,7 @@ export default function KeyCRMPage() {
             <p className="text-[var(--text-2)]">Ще не було синхронізацій</p>
           </div>
         ) : (
-          <div className="bg-black/5 dark:bg-white/5 border border-[var(--border)] rounded-2xl overflow-hidden">
+          <div className="bg-[var(--bg-card2)] border border-[var(--border)] rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)]">
@@ -159,7 +159,7 @@ export default function KeyCRMPage() {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="border-b border-[var(--border)]/50 hover:bg-black/5 dark:bg-white/5 transition-colors">
+                  <tr key={log.id} className="border-b border-[var(--border)]/50 hover:bg-[var(--bg-hover)] transition-colors">
                     <td className="px-4 py-3 text-center">{statusIcon[log.status] || <Clock className="h-4 w-4 text-[var(--text-2)] inline" />}</td>
                     <td className="px-4 py-3">{new Date(log.synced_at).toLocaleString('uk-UA')}</td>
                     <td className="px-4 py-3 text-center font-bold">{log.orders_fetched}</td>

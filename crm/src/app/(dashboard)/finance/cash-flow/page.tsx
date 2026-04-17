@@ -48,7 +48,7 @@ export default function CashFlowPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-black/5 dark:bg-white/5 border-b border-[var(--border)]">
+              <tr className="bg-[var(--bg-card2)] border-b border-[var(--border)]">
                 <th className="px-6 py-3 text-[10px] font-bold text-[var(--text-3)] uppercase">Дата</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-[var(--text-3)] uppercase">Категорія</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-[var(--text-3)] uppercase">Опис</th>
@@ -56,7 +56,7 @@ export default function CashFlowPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)] text-sm">
-              <tr className="hover:bg-black/2.5 dark:hover:bg-white/2.5 transition-colors">
+              <tr className="hover:bg-[var(--bg-hover)] transition-colors">
                 <td className="px-6 py-4 text-[var(--text-2)]">02.04.2026</td>
                 <td className="px-6 py-4">
                   <span className="px-2 py-1 bg-emerald-500/10 text-emerald-600 text-[10px] font-bold uppercase rounded-md">Продаж</span>
@@ -64,7 +64,7 @@ export default function CashFlowPage() {
                 <td className="px-6 py-4 text-[var(--text-1)] font-medium">Оплата замовлення #171</td>
                 <td className="px-6 py-4 text-right text-emerald-500 font-bold">+ ₴ 12,400</td>
               </tr>
-              <tr className="hover:bg-black/2.5 dark:hover:bg-white/2.5 transition-colors">
+              <tr className="hover:bg-[var(--bg-hover)] transition-colors">
                 <td className="px-6 py-4 text-[var(--text-2)]">01.04.2026</td>
                 <td className="px-6 py-4">
                   <span className="px-2 py-1 bg-rose-500/10 text-rose-600 text-[10px] font-bold uppercase rounded-md">Закупівля</span>

@@ -30,15 +30,15 @@ export default function SupplyLayout({ children }: { children: React.ReactNode }
 
       <nav className="flex gap-2 mb-6 border-b border-[var(--border)] px-1">
         {navLinks.map((link) => {
-          const isActive = link.exact ? pathname === link.href : pathname.startsWith(link.href);
+          const isActive = link.exact ? pathname === link.href : pathname?.startsWith(link.href);
           return (
             <Link
               key={link.href}
               href={link.href}
               className={`flex items-center gap-2 px-5 py-3 -mb-[1px] border-b-2 font-bold transition-all ${
                 isActive
-                  ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                  : 'border-transparent text-[var(--text-3)] hover:text-[var(--text-1)] hover:border-slate-300 dark:hover:border-slate-700'
+                  ? 'border-emerald-500 text-emerald-500'
+                  : 'border-transparent text-[var(--text-3)] hover:text-[var(--text-1)] hover:border-[var(--border)]'
               }`}
             >
               <link.icon className="w-4 h-4" />

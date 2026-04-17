@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { requireAuth, getAuth } from '@/lib/auth-server';
+import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const { searchParams } = new URL(request.url);
     const source = searchParams.get('source');
@@ -21,14 +22,10 @@ export async function GET(request: Request) {
 
     const { data, error } = await query;
 
-    if (error) {
-      console.error('Supabase error fetching product models:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    return NextResponse.json(data || []);
+    if (error) return ApiResponse.handle(error, 'product_models_get');
+    return ApiResponse.success(data || []);
   } catch (e: any) {
-    console.error('Product models GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'product_models_get');
   }
 }
 
@@ -36,7 +33,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'technologist'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return ApiResponse.error('Forbidden', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const body = await request.json();
@@ -56,15 +53,12 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      console.error('Supabase error creating product model:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error) return ApiResponse.handle(error, 'product_models_post');
 
     // ЗАПИС В ЖУРНАЛ АУДИТУ
     if (auth) {
       const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'CREATE',
         entityType: 'model',
         entityId: data.id.toString(),
@@ -74,9 +68,8 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json(data, { status: 201 });
+    return ApiResponse.success(data, 201);
   } catch (e: any) {
-    console.error('Product models POST exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'product_models_post');
   }
 }

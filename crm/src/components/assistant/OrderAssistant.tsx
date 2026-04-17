@@ -46,45 +46,45 @@ export default function OrderAssistant({ orderId }: OrderAssistantProps) {
   };
   
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl border dark:border-slate-800 p-4">
-      <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+    <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4">
+      <h3 className="font-bold text-sm mb-3 flex items-center gap-2 text-[var(--text-1)]">
         <FileText size={16} />
-        AI Ассистент
+        AI Асистент
       </h3>
-      
+
       <div className="space-y-2 mb-4">
         {CONTEXT_PROMPTS.map((cp) => (
           <button
             key={cp.label}
             onClick={() => askQuestion(cp.prompt)}
             disabled={loading}
-            className="w-full text-left px-3 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+            className="w-full text-left px-3 py-2 bg-[var(--bg-card2)] hover:bg-[var(--bg-hover)] rounded-lg text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
           >
-            <cp.icon size={14} className="text-indigo-600" />
+            <cp.icon size={14} className="text-[var(--accent)]" />
             {cp.label}
           </button>
         ))}
       </div>
-      
+
       {loading && (
-        <div className="py-4 flex items-center justify-center gap-2 text-slate-400 text-sm">
+        <div className="py-4 flex items-center justify-center gap-2 text-[var(--text-3)] text-sm">
           <Loader2 size={16} className="animate-spin" />
-          Анализирую...
+          Аналізую...
         </div>
       )}
-      
+
       {answer && !loading && (
         <div className="mt-4 space-y-3">
-          <div className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+          <div className="text-sm text-[var(--text-2)] whitespace-pre-wrap">
             {answer}
           </div>
-          
+
           {citations.length > 0 && (
-            <div className="pt-3 border-t dark:border-slate-800">
-              <p className="text-xs text-slate-500 mb-2">Источники:</p>
+            <div className="pt-3 border-t border-[var(--border-subtle)]">
+              <p className="text-xs text-[var(--text-3)] mb-2">Джерела:</p>
               <div className="space-y-1">
                 {citations.map((c, i) => (
-                  <div key={i} className="text-xs text-indigo-600 dark:text-indigo-400">
+                  <div key={i} className="text-xs text-[var(--accent)]">
                     📄 {c.title || c.source}
                   </div>
                 ))}

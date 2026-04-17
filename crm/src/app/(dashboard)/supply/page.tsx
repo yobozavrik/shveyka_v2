@@ -104,8 +104,8 @@ export default function SupplyPage() {
         <div className="m-4 mb-2 bg-sky-500/10 border border-sky-500/20 p-4 rounded-xl flex items-start gap-4">
             <Truck className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
             <div>
-               <h4 className="text-sm font-bold text-sky-800 dark:text-sky-400 mb-1">Додавайте постачання в 5 разів швидше!</h4>
-               <p className="text-xs text-sky-700/80 dark:text-sky-300/80 font-medium">Штучний інтелект скоро з'явиться для розпізнавання накладних з фотографії чи PDF-документа.</p>
+               <h4 className="text-sm font-bold text-sky-500 mb-1">Додавайте постачання в 5 разів швидше!</h4>
+               <p className="text-xs text-sky-500/80 font-medium">Штучний інтелект скоро з'явиться для розпізнавання накладних з фотографії чи PDF-документа.</p>
             </div>
             <button className="ml-auto px-4 py-1.5 border border-sky-300 text-sky-700 font-bold rounded-lg text-xs hover:bg-sky-100 transition-colors">
                Розпізнати
@@ -149,7 +149,7 @@ export default function SupplyPage() {
 
                   return (
                   <Fragment key={doc.id}>
-                    <tr className={`hover:bg-slate-50 dark:hover:bg-white/5 transition-colors ${isExpanded ? 'bg-slate-50 dark:bg-white/5' : ''}`}>
+                    <tr className={`hover:bg-[var(--bg-hover)] transition-colors ${isExpanded ? 'bg-[var(--bg-card2)]' : ''}`}>
                       <td className="px-4 py-4 text-xs font-medium text-[var(--text-2)]">{doc.id}</td>
                       <td className="px-4 py-4 text-xs font-bold text-[var(--text-1)]">
                          {doc.doc_date ? format(new Date(doc.doc_date), 'd MMM, HH:mm', { locale: uk }) : '-'}
@@ -194,9 +194,9 @@ export default function SupplyPage() {
                     </tr>
                     
                     {isExpanded && (
-                      <tr className="bg-slate-50 border-b-2 border-slate-200 shadow-inner dark:bg-white/5 dark:border-white/10">
+                      <tr className="bg-[var(--bg-card2)] border-b-2 border-[var(--border)] shadow-inner">
                          <td colSpan={11} className="p-0">
-                            <div className="p-6 bg-white dark:bg-[var(--bg-base)] rounded-xl m-4 border border-[var(--border)] shadow-sm">
+                            <div className="p-6 bg-[var(--bg-card)] rounded-xl m-4 border border-[var(--border)] shadow-sm">
                                <table className="w-full text-left">
                                   <thead>
                                      <tr className="text-[11px] font-semibold text-[var(--text-3)] border-b border-[var(--border)]">

@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { requireAuth, getAuth } from '@/lib/auth-server';
+import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const supabase = await createServerClient(true);
     const { searchParams } = new URL(request.url);
@@ -23,14 +25,12 @@ export async function GET(request: Request) {
 
     const { data, error } = await query;
     if (error) {
-      console.error('Supabase error fetching materials:', error);
-      return NextResponse.json({ error: error.message, data: [] }, { status: 500 });
+      return ApiResponse.handle(error, 'warehouse_materials');
     }
     
-    return NextResponse.json(data || []);
+    return ApiResponse.success(data || []);
   } catch (e: any) {
-    console.error('Materials GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'warehouse_materials');
   }
 }
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return ApiResponse.error('Forbidden', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const body = await request.json();
@@ -60,12 +60,10 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error('Supabase error creating material:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return ApiResponse.handle(error, 'warehouse_materials');
     }
-    return NextResponse.json(data, { status: 201 });
+    return ApiResponse.success(data, 201);
   } catch (e: any) {
-    console.error('Materials POST exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'warehouse_materials');
   }
 }

@@ -19,7 +19,6 @@ const firaCode = Fira_Code({
 export const metadata: Metadata = {
   title: "Швейка MES — Виробничий модуль",
   description: "Система управління швейним виробництвом",
-  charset: "utf-8",
 };
 
 export default function RootLayout({

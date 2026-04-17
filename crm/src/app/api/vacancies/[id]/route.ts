@@ -1,13 +1,14 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const { id } = await params;
     const supabase = await createServerClient(true);
@@ -18,13 +19,12 @@ export async function GET(_req: Request, { params }: Params) {
       .eq('id', parseInt(id))
       .single();
 
-    if (error || !vacancy) {
-      return NextResponse.json({ error: error?.message || 'Не знайдено' }, { status: 404 });
-    }
+    if (error) return ApiResponse.handle(error, 'vacancies_get');
+    if (!vacancy) return ApiResponse.error('Не знайдено', ERROR_CODES.NOT_FOUND, 404);
 
-    return NextResponse.json(vacancy);
+    return ApiResponse.success(vacancy);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'vacancies_get');
   }
 }
 
@@ -32,7 +32,7 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { id } = await params;
@@ -54,12 +54,12 @@ export async function PATCH(req: Request, { params }: Params) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return ApiResponse.handle(error, 'vacancies_patch');
 
     // Record audit log
     try {
       const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'UPDATE',
         entityType: 'vacancy',
         entityId: id,
@@ -72,9 +72,9 @@ export async function PATCH(req: Request, { params }: Params) {
       console.warn('Failed to record audit log:', auditError);
     }
 
-    return NextResponse.json(data);
+    return ApiResponse.success(data);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'vacancies_patch');
   }
 }
 
@@ -82,7 +82,7 @@ export async function DELETE(req: Request, { params }: Params) {
   try {
     const auth = await getAuth();
     if (!auth || auth.role !== 'admin') {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { id } = await params;
@@ -95,12 +95,12 @@ export async function DELETE(req: Request, { params }: Params) {
       .delete()
       .eq('id', parseInt(id));
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return ApiResponse.handle(error, 'vacancies_delete');
 
     // Record audit log
     try {
       const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'DELETE',
         entityType: 'vacancy',
         entityId: id,
@@ -113,8 +113,8 @@ export async function DELETE(req: Request, { params }: Params) {
       console.warn('Failed to record audit log:', auditError);
     }
 
-    return NextResponse.json({ success: true });
+    return ApiResponse.success({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'vacancies_delete');
   }
 }

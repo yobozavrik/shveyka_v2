@@ -395,7 +395,7 @@ components:
 
     TaskEntryCreateRequest:
       type: object
-      required: [batch_id, operation_id, quantity]
+      required: [batch_id, operation_id]
       properties:
         batch_id:
           type: integer
@@ -403,9 +403,12 @@ components:
           type: integer
         quantity:
           type: integer
+          description: Generic quantity payload for simple operations
+          nullable: true
         defect_quantity:
           type: integer
           default: 0
+          description: Generic defect quantity for simple operations
         metric_value:
           type: number
           default: 0
@@ -420,6 +423,21 @@ components:
           nullable: true
         status:
           type: string
+        size_rows:
+          type: array
+          description: Overlock payload. Each row is bounded by the cutting breakdown for the same size.
+          items:
+            type: object
+            required: [size, quantity, defect_quantity]
+            properties:
+              size:
+                type: string
+              quantity:
+                type: integer
+                minimum: 0
+              defect_quantity:
+                type: integer
+                minimum: 0
 
     TaskEntry:
       type: object

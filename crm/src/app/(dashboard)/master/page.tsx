@@ -5,8 +5,9 @@ import { ClipboardCheck, Check, X, Loader2, Clock, Package, User, Wrench, Refres
 
 interface Entry {
   id: number;
-  quantity: number;
+  quantity: number; // Теперь здесь уже ПОЛНАЯ сумма (например, 105)
   size: string | null;
+  data: Record<string, any> | null;
   status: string;
   notes: string | null;
   created_at: string;
@@ -29,7 +30,14 @@ export default function MasterPage() {
     try {
       const res = await fetch('/api/entries?status=submitted&limit=100');
       const data = await res.json();
-      setEntries(Array.isArray(data) ? data : []);
+      const entriesData = Array.isArray(data) ? data : [];
+      
+      // ОТЛАДКА: Выведем первую запись в консоль, чтобы посмотреть структуру
+      if (entriesData.length > 0) {
+        console.log('DEBUG Master Entry:', JSON.stringify(entriesData[0], null, 2));
+      }
+      
+      setEntries(entriesData);
     } finally { setLoading(false); }
   }
 
@@ -70,7 +78,7 @@ export default function MasterPage() {
               {entries.length} очікує
             </div>
           )}
-          <button onClick={load} className="p-2 bg-[var(--bg-card)] hover:bg-black/8 dark:hover:bg-white/8 rounded-xl transition-colors">
+          <button onClick={load} className="p-2 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] rounded-xl transition-colors">
             <RefreshCw className="h-4 w-4" />
           </button>
         </div>
@@ -99,7 +107,7 @@ export default function MasterPage() {
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {entries.map(e => (
-                <tr key={e.id} className="hover:bg-black/5 dark:bg-white/5 transition-colors">
+                <tr key={e.id} className="hover:bg-[var(--bg-hover)] transition-colors">
                   <td className="px-4 py-3 text-[var(--text-2)] text-xs font-mono">
                     {new Date(e.created_at).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
                     <div>{new Date(e.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}</div>
@@ -122,11 +130,19 @@ export default function MasterPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <div className="font-black text-lg">{e.quantity}</div>
-                    {e.size && <div className="text-xs text-[var(--text-2)] uppercase font-mono">{e.size}</div>}
+                    <div className="font-black text-lg text-[var(--text-1)]">
+                      {e.quantity}
+                    </div>
+                    {/* Показываем разбивку по размерам, если она есть (для инфо) */}
+                    {e.data?.size_breakdown && (
+                      <div className="text-[10px] text-[var(--text-2)] font-mono mt-0.5 truncate max-w-[120px] ml-auto">
+                        {Object.entries(e.data.size_breakdown).map(([size, qty]) => `${size}:${qty}`).join(', ')}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-green-400">
-                    {((e.quantity || 0) * (e.operations?.base_rate || 0)).toFixed(2)}
+                    {/* Сумма теперь считается от ПОЛНОГО quantity */}
+                    {(e.quantity * (e.operations?.base_rate || 0)).toFixed(2)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
@@ -172,7 +188,7 @@ export default function MasterPage() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setRejectId(null)}
-                className="flex-1 bg-[var(--bg-card)] hover:bg-black/8 dark:hover:bg-white/8 py-2.5 rounded-xl text-sm font-semibold transition-colors">
+                className="flex-1 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] py-2.5 rounded-xl text-sm font-semibold transition-colors">
                 Скасувати
               </button>
               <button onClick={handleRejectSubmit} disabled={processing !== null}

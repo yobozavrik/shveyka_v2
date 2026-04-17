@@ -119,7 +119,7 @@ export default function OperationsPage() {
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {filtered.map(op => (
-                <tr key={op.id} className="hover:bg-black/5 dark:bg-white/5 transition-colors">
+                <tr key={op.id} className="hover:bg-[var(--bg-hover)] transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-indigo-300">{op.code}</td>
                   <td className="px-4 py-3 font-medium">{op.name}</td>
                   <td className="px-4 py-3">
@@ -199,7 +199,7 @@ export default function OperationsPage() {
 
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowModal(false)}
-                className="flex-1 bg-[var(--bg-card)] hover:bg-black/8 dark:hover:bg-white/8 py-2.5 rounded-xl text-sm font-semibold transition-colors">
+                className="flex-1 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] py-2.5 rounded-xl text-sm font-semibold transition-colors">
                 Скасувати
               </button>
               <button onClick={handleSave} disabled={saving || !form.code || !form.name || !form.base_rate}

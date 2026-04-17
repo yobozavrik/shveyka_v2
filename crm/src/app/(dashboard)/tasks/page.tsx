@@ -51,11 +51,11 @@ export default function TasksPage() {
           <p className="text-sm text-[var(--text-3)] mt-1">Організація робочого процесу та дедлайнів</p>
         </div>
         
-        <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-[var(--border)]">
-          <button 
+        <div className="flex items-center gap-2 bg-[var(--bg-card2)] p-1 rounded-xl border border-[var(--border)]">
+          <button
             onClick={() => setView('calendar')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-              view === 'calendar' ? 'bg-white dark:bg-zinc-800 shadow-sm text-emerald-600' : 'text-[var(--text-3)] hover:text-[var(--text-1)]'
+              view === 'calendar' ? 'bg-[var(--bg-card)] shadow-sm text-emerald-500' : 'text-[var(--text-3)] hover:text-[var(--text-1)]'
             }`}
           >
             <CalendarIcon className="h-4 w-4" /> Календар
@@ -63,7 +63,7 @@ export default function TasksPage() {
           <button 
             onClick={() => setView('list')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-              view === 'list' ? 'bg-white dark:bg-zinc-800 shadow-sm text-emerald-600' : 'text-[var(--text-3)] hover:text-[var(--text-1)]'
+              view === 'list' ? 'bg-[var(--bg-card)] shadow-sm text-emerald-500' : 'text-[var(--text-3)] hover:text-[var(--text-1)]'
             }`}
           >
             <ListTodo className="h-4 w-4" /> Список
@@ -81,10 +81,10 @@ export default function TasksPage() {
                   {currentDate.toLocaleString('uk-UA', { month: 'long', year: 'numeric' })}
                 </h2>
                 <div className="flex items-center gap-1">
-                  <button className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors">
+                  <button className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg transition-colors">
                     <ChevronLeft className="h-5 w-5" />
                   </button>
-                  <button className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors">
+                  <button className="p-1.5 hover:bg-[var(--bg-hover)] rounded-lg transition-colors">
                     <ChevronRight className="h-5 w-5" />
                   </button>
                 </div>
@@ -102,7 +102,7 @@ export default function TasksPage() {
 
             {/* Grid */}
             <div className="flex-1 bg-[var(--bg-panel)] rounded-2xl border border-[var(--border)] overflow-hidden flex flex-col shadow-sm">
-              <div className="grid grid-cols-7 border-b border-[var(--border)] bg-black/5 dark:bg-white/5">
+              <div className="grid grid-cols-7 border-b border-[var(--border)] bg-[var(--bg-card2)]">
                 {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'].map(d => (
                   <div key={d} className="py-2 text-center text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">{d}</div>
                 ))}
@@ -114,8 +114,8 @@ export default function TasksPage() {
                   return (
                     <div 
                       key={i} 
-                      className={`min-h-[100px] border-r border-b border-[var(--border)] p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/5 group relative ${
-                        !day ? 'bg-black/2.5 dark:bg-white/2.5' : ''
+                      className={`min-h-[100px] border-r border-b border-[var(--border)] p-2 transition-colors hover:bg-[var(--bg-hover)] group relative ${
+                        !day ? 'bg-[var(--bg-card2)]' : ''
                       }`}
                     >
                       {day && (
@@ -163,7 +163,7 @@ export default function TasksPage() {
                           }`}></div>
                           <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-3)]">{t.category}</span>
                         </div>
-                        <button className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                        <button className="p-1 hover:bg-[var(--bg-hover)] rounded-lg opacity-0 group-hover:opacity-100 transition-all">
                           <Share2 className="h-4 w-4 text-[var(--text-3)]" />
                         </button>
                       </div>
@@ -193,8 +193,8 @@ export default function TasksPage() {
             <Smartphone className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-sm font-bold text-emerald-900 dark:text-emerald-100">Мобільний доступ</div>
-            <div className="text-xs text-emerald-700/70 dark:text-emerald-400/70">Ви можете підключити Google Calendar або Apple Calendar для синхронізації задач.</div>
+            <div className="text-sm font-bold text-[var(--text-1)]">Мобільний доступ</div>
+            <div className="text-xs text-[var(--text-3)]">Ви можете підключити Google Calendar або Apple Calendar для синхронізації задач.</div>
           </div>
         </div>
         <button className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-600/10">

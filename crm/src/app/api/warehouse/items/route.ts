@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const supabase = await createServerClient(true);
     const { searchParams } = new URL(request.url);
@@ -26,8 +28,7 @@ export async function GET(request: Request) {
 
     const { data: items, error } = await query;
     if (error) {
-      console.error('Supabase error fetching items:', error);
-      return NextResponse.json({ error: error.message, data: [] }, { status: 500 });
+      return ApiResponse.handle(error, 'warehouse_items');
     }
 
     // Now let's fetch inventory balances for these items
@@ -53,10 +54,9 @@ export async function GET(request: Request) {
       };
     });
     
-    return NextResponse.json(result);
+    return ApiResponse.success(result);
   } catch (e: any) {
-    console.error('Items GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'warehouse_items');
   }
 }
 
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return ApiResponse.error('Forbidden', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const body = await request.json();
@@ -85,25 +85,20 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error('Supabase error creating item:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return ApiResponse.handle(error, 'warehouse_items');
     }
 
-    await recordAuditLog(
-      supabase,
-      auth.userId,
-      'create',
-      'items',
-      data.id,
-      null,
-      data,
-      request.headers.get('user-agent'),
-      request.headers.get('x-forwarded-for')
-    );
+    await recordAuditLog({
+      action: 'CREATE',
+      entityType: 'items',
+      entityId: String(data.id),
+      newData: data,
+      request: request,
+      auth: { id: auth.userId, username: auth.username },
+    });
 
-    return NextResponse.json(data, { status: 201 });
+    return ApiResponse.success(data, 201);
   } catch (e: any) {
-    console.error('Items POST exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'warehouse_items');
   }
 }

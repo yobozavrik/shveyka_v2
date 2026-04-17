@@ -5,7 +5,7 @@ const KEYCRM_URL = process.env.KEYCRM_API_URL;
 const KEYCRM_KEY = process.env.KEYCRM_API_KEY;
 
 export async function syncFromKeyCRM() {
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
   
   try {
     const response = await axios.get(`${KEYCRM_URL}/production/orders`, {

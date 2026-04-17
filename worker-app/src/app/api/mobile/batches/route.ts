@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import { createRequestLogger } from '@/lib/logger';
 
 export async function GET(request: Request) {
+  const logger = createRequestLogger(request, { action: 'list_batches' });
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
   const { data, error } = await query;
 
   if (error) {
-    console.error('Batches error:', error);
+    logger.error('Batches error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

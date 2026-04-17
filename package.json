@@ -1,0 +1,20 @@
+{
+  "name": "shveyka-erp",
+  "private": true,
+  "workspaces": [
+    "crm",
+    "worker-app",
+    "packages/*"
+  ],
+  "scripts": {
+    "db:types": "supabase gen types typescript --local > packages/shared/src/types/database.ts",
+    "db:types:remote": "node scripts/gen-db-types.js --mode=remote",
+    "db:types:url": "node scripts/gen-db-types.js --mode=url",
+    "supabase:login": "supabase login"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "shadcn": "^4.2.0",
+    "supabase": "^2.92.1"
+  }
+}

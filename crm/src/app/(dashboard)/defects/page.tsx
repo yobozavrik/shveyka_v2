@@ -137,7 +137,7 @@ export default function DefectsPage() {
 
       {/* Form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-black/5 dark:bg-white/5 border border-[var(--border)] rounded-2xl p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-[var(--bg-card2)] border border-[var(--border)] rounded-2xl p-6 space-y-4">
           <h3 className="font-bold text-lg">Новий дефект</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -183,7 +183,7 @@ export default function DefectsPage() {
           </div>
           <div className="flex gap-3">
             <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-bold transition-all">Зберегти</button>
-            <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 bg-[var(--bg-card2)] hover:bg-black/10 dark:hover:bg-white/10 rounded-xl text-sm font-medium transition-all">Скасувати</button>
+            <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 bg-[var(--bg-card2)] hover:bg-[var(--bg-hover)] rounded-xl text-sm font-medium transition-all">Скасувати</button>
           </div>
         </form>
       )}
@@ -197,7 +197,7 @@ export default function DefectsPage() {
           <p className="text-[var(--text-2)]">Дефектів не знайдено</p>
         </div>
       ) : (
-        <div className="bg-black/5 dark:bg-white/5 border border-[var(--border)] rounded-2xl overflow-hidden">
+        <div className="bg-[var(--bg-card2)] border border-[var(--border)] rounded-2xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)]">
@@ -214,7 +214,7 @@ export default function DefectsPage() {
             </thead>
             <tbody>
               {defects.map((d) => (
-                <tr key={d.id} className="border-b border-[var(--border)]/50 hover:bg-black/5 dark:bg-white/5 transition-colors">
+                <tr key={d.id} className="border-b border-[var(--border)]/50 hover:bg-[var(--bg-hover)] transition-colors">
                   <td className="px-4 py-3 font-mono text-xs">{d.production_batches?.batch_number || '-'}</td>
                   <td className="px-4 py-3 text-[var(--text-1)]">{d.operations?.name || '-'}</td>
                   <td className="px-4 py-3">{defectTypeLabels[d.defect_type] || d.defect_type}</td>

@@ -19,6 +19,8 @@ import {
   X,
   Trash2,
   Shirt,
+  MapPin,
+  UserPlus,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -98,6 +100,7 @@ export default function OrdersPage() {
 
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const [products, setProducts] = useState<ProductModel[]>([]);
+  const [activeTab, setActiveTab] = useState<'new' | 'approved' | 'production'>('new');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -105,11 +108,33 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
 
+  // Справочники
+  const [locations, setLocations] = useState<{ id: number; name: string }[]>([]);
+  const [clients, setClients] = useState<{ id: number; name: string; phone?: string }[]>([]);
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [clientForm, setClientForm] = useState({ name: '', phone: '', email: '' });
+
   const [form, setForm] = useState({
     order_type: 'warehouse',
     planned_completion_date: '',
+    target_location_id: '',
+    client_id: '',
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
   });
   const [items, setItems] = useState<OrderItem[]>([]);
+
+  // Загрузка справочников
+  const loadClients = async () => {
+    try {
+      const res = await fetch('/api/clients');
+      if (res.ok) {
+        const data = await res.json();
+        setClients(Array.isArray(data) ? data : []);
+      }
+    } catch (e) { console.error('Error loading clients:', e); }
+  };
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -123,9 +148,47 @@ export default function OrdersPage() {
         console.error('Error loading products:', e);
       }
     };
-
+    const loadLocations = async () => {
+      try {
+        const res = await fetch('/api/warehouse/locations');
+        if (res.ok) {
+          const data = await res.json();
+          setLocations(Array.isArray(data) ? data : []);
+        }
+      } catch (e) { console.error('Error loading locations:', e); }
+    };
+    
     loadProducts();
+    loadLocations();
+    loadClients();
   }, []);
+
+  // Создание клиента
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientForm.name.trim()) return;
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientForm),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Помилка створення клієнта');
+      }
+      const newClient = await res.json();
+      
+      // Перезагружаем список клиентов
+      await loadClients();
+      
+      setForm({ ...form, client_id: String(newClient.id), customer_name: newClient.name });
+      setClientForm({ name: '', phone: '', email: '' });
+      setShowClientModal(false);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -192,11 +255,15 @@ export default function OrdersPage() {
   const removeItem = (id: string) => {
     setItems(items.filter((i) => i.id !== id));
   };
-
   const resetOrderForm = () => {
     setForm({
       order_type: 'warehouse',
       planned_completion_date: '',
+      target_location_id: '',
+      client_id: '',
+      customer_name: '',
+      customer_phone: '',
+      customer_email: '',
     });
     setItems([]);
     setEditingOrderId(null);
@@ -212,6 +279,11 @@ export default function OrdersPage() {
     setForm({
       order_type: order.order_type === 'customer' ? 'customer' : 'warehouse',
       planned_completion_date: order.planned_completion_date || '',
+      target_location_id: '', // Will be set if needed
+      client_id: '',
+      customer_name: order.customer_name || '',
+      customer_phone: '',
+      customer_email: '',
     });
     setItems(
       (order.lines || []).map((line) => ({
@@ -236,6 +308,26 @@ export default function OrdersPage() {
       await fetchOrders();
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const handleClearData = async () => {
+    if (!await showConfirm('УВАГА: Це видалить ВСІ замовлення, партії, завдання та нарахування ЗП. Продовжити?')) return;
+    if (!await showConfirm('Останнє попередження! Дані неможливо буде відновити. Ви точно впевнені?')) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/clear-production', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Помилка очищення');
+      }
+      alert('✅ Виробничі дані успішно очищено!');
+      await fetchOrders();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -264,6 +356,8 @@ export default function OrdersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_type: form.order_type === 'customer' ? 'customer' : 'stock',
+          customer_name: form.customer_name || null,
+          customer_phone: form.customer_phone || null,
           planned_completion_date: form.planned_completion_date || null,
           lines,
         }),
@@ -303,6 +397,14 @@ export default function OrdersPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={handleClearData}
+            className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            title="Очистити всі виробничі дані"
+          >
+            <Trash2 size={16} />
+            Очистити БД
+          </button>
+          <button
             onClick={fetchOrders}
             disabled={loading}
             className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -315,13 +417,14 @@ export default function OrdersPage() {
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             <Plus size={16} />
-            {showFillCard && editingOrderId !== null ? 'Редагування' : 'Заповнити замовлення'}
+            {showFillCard && editingOrderId !== null ? 'Редагування' : 'Сформувати нове замовлення'}
           </button>
         </div>
       </div>
 
       {showFillCard && (
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-bold">{editingOrderId ? 'Редагування замовлення' : 'Заповнення замовлення'}</h3>
             <button
@@ -357,6 +460,57 @@ export default function OrdersPage() {
                 ))}
               </div>
             </div>
+
+            {/* Выбор склада */}
+            {form.order_type === 'warehouse' && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Склад</label>
+                <select
+                  value={form.target_location_id}
+                  onChange={(e) => setForm({ ...form, target_location_id: e.target.value })}
+                  className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Оберіть склад</option>
+                  {locations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Выбор клиента */}
+            {form.order_type === 'customer' && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Клієнт</label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={form.client_id}
+                    onChange={(e) => {
+                      const selected = clients.find(c => c.id === Number(e.target.value));
+                      setForm({
+                        ...form,
+                        client_id: e.target.value,
+                        customer_name: selected?.name || '',
+                        customer_phone: selected?.phone || '',
+                      });
+                    }}
+                    className="flex-1 max-w-xs rounded border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Оберіть клієнта</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowClientModal(true)}
+                    className="flex items-center gap-1 rounded bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20"
+                  >
+                    <UserPlus size={14} /> Створити
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700">Дата, коли треба виконати</label>
@@ -445,9 +599,41 @@ export default function OrdersPage() {
             </div>
           </form>
         </div>
+        </div>
       )}
 
-      <div className="flex gap-4 items-center">
+      {/* Вкладки */}
+      <div className="flex items-center gap-4 border-b border-gray-200 mb-6">
+        <button
+          onClick={() => setActiveTab('new')}
+          className={`pb-3 text-sm font-medium transition-all relative ${
+            activeTab === 'new' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Нові
+          {activeTab === 'new' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />}
+        </button>
+        <button
+          onClick={() => setActiveTab('approved')}
+          className={`pb-3 text-sm font-medium transition-all relative ${
+            activeTab === 'approved' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          В роботі
+          {activeTab === 'approved' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />}
+        </button>
+        <button
+          onClick={() => setActiveTab('production')}
+          className={`pb-3 text-sm font-medium transition-all relative ${
+            activeTab === 'production' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          У виробництві
+          {activeTab === 'production' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />}
+        </button>
+      </div>
+
+      <div className="flex gap-4 items-center mb-6">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
@@ -471,28 +657,40 @@ export default function OrdersPage() {
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>}
 
-      {loading ? (
-        <div className="py-16 text-center text-gray-500">
-          <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-600" />
-          Завантаження...
-        </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
-          <Package className="mx-auto mb-3 h-12 w-12 text-gray-300" />
-          <p className="mb-4 text-gray-500">{search || statusFilter ? 'Нічого не знайдено' : 'Немає замовлень'}</p>
-          {!search && !statusFilter && (
-            <button
-              onClick={() => setShowFillCard(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus size={16} />
-              Створити перше замовлення
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredOrders.map((order) => (
+      {(() => {
+        const tabFilteredOrders = filteredOrders.filter(order => {
+          if (activeTab === 'new') {
+            return order.status === 'draft';
+          }
+          if (activeTab === 'approved') {
+            return order.status === 'approved';
+          }
+          // Вкладка "У виробництві"
+          return ['launched', 'in_production'].includes(order.status);
+        });
+
+        return loading ? (
+          <div className="py-16 text-center text-gray-500">
+            <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-blue-600" />
+            Завантаження...
+          </div>
+        ) : tabFilteredOrders.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
+            <Package className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+            <p className="mb-4 text-gray-500">{search || statusFilter ? 'Нічого не знайдено' : activeTab === 'new' ? 'Немає нових замовлень' : 'Немає замовлень в роботі'}</p>
+            {!search && !statusFilter && activeTab === 'new' && (
+              <button
+                onClick={() => setShowFillCard(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Plus size={16} />
+                Створити перше замовлення
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {tabFilteredOrders.map((order) => (
             <div
               key={order.id}
               onClick={() => router.push(`/production-orders/${order.id}`)}
@@ -542,63 +740,65 @@ export default function OrdersPage() {
                     <div className="text-xs text-gray-500">{order.total_lines} позицій</div>
                   </div>
 
-                  {order.status === 'draft' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleApprove(order.id);
-                      }}
-                      className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                      <CheckCircle size={16} />
-                      Затвердити
-                    </button>
-                  )}
-
-                  {order.status === 'approved' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleLaunch(order.id);
-                      }}
-                      className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-                    >
-                      <Play size={16} />
-                      Запустити
+                    {order.status === 'draft' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleApprove(order.id);
+                        }}
+                        className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+                      >
+                        <CheckCircle size={16} />
+                        Підтвердити в роботу
                       </button>
-                  )}
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEditOrder(order);
-                    }}
-                    className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    title="Редагувати"
-                  >
-                    <Edit2 size={18} />
-                  </button>
+                    {order.status === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditOrder(order);
+                        }}
+                        className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                        title="Редагувати"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteOrder(order);
-                    }}
-                    className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                    title="Видалити"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                    {order.status === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteOrder(order);
+                        }}
+                        className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                        title="Видалити"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
 
-                  <Link
-                    href={`/production-orders/${order.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                  >
-                    <Eye size={18} />
-                  </Link>
+                    {order.status === 'approved' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLaunch(order.id);
+                        }}
+                        className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                      >
+                        <Play size={16} />
+                        Запустити у виробництво
+                      </button>
+                    )}
+
+                    {['launched', 'in_production', 'completed'].includes(order.status) && (
+                      <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                        У виробництві
+                      </div>
+                    )}
                 </div>
               </div>
 
@@ -628,6 +828,70 @@ export default function OrdersPage() {
               )}
             </div>
           ))}
+        </div>
+        );
+      })()}
+
+      {/* Модальное окно создания клиента */}
+      {showClientModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Новий клієнт</h3>
+              <button onClick={() => setShowClientModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateClient} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Ім'я *</label>
+                <input
+                  type="text"
+                  value={clientForm.name}
+                  onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+                  required
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="Наприклад: ТОВ Ромашка"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Телефон</label>
+                <input
+                  type="tel"
+                  value={clientForm.phone}
+                  onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="+380..."
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  placeholder="client@example.com"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClientModal(false)}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
+                  Скасувати
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  Зберегти
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

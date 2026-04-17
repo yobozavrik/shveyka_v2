@@ -44,23 +44,23 @@ export default function PayrollAssistant({ workerId, periodId }: PayrollAssistan
   };
   
   return (
-    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+    <div className="bg-[var(--bg-card2)] rounded-lg p-3">
       <div className="flex flex-wrap gap-2">
         {CONTEXT_PROMPTS.map((cp) => (
           <button
             key={cp.label}
             onClick={() => askQuestion(cp.prompt)}
             disabled={loading}
-            className="px-3 py-1.5 bg-white dark:bg-slate-700 rounded-md text-xs hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            className="px-3 py-1.5 bg-[var(--bg-card)] rounded-md text-xs hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1.5 disabled:opacity-50"
           >
             <cp.icon size={12} />
             {cp.label}
           </button>
         ))}
       </div>
-      
+
       {answer && (
-        <div className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+        <div className="mt-3 text-sm text-[var(--text-2)]">
           {answer}
         </div>
       )}

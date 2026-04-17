@@ -4,6 +4,7 @@ import { jwtVerify } from 'jose';
 if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET env var is required');
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 export const AUTH_COOKIE = 'mes_auth_token';
+export const REFRESH_COOKIE = 'mes_refresh_token';
 
 export interface AuthPayload {
   userId: number;

@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
 import { AIProviderFactory } from '@/lib/ai/agentic/infrastructure/AIProviderFactory';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -9,7 +10,7 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { id } = await params;
@@ -22,12 +23,11 @@ export async function POST(req: Request, { params }: Params) {
       .eq('id', parseInt(id))
       .single();
 
-    if (candError || !candidate) {
-      return NextResponse.json({ error: 'Кандидата не знайдено' }, { status: 404 });
-    }
+    if (candError) return ApiResponse.handle(candError, 'candidate_score');
+    if (!candidate) return ApiResponse.error('Кандидата не знайдено', ERROR_CODES.NOT_FOUND, 404);
 
     if (!candidate.resume_text) {
-      return NextResponse.json({ error: 'Відсутній текст резюме для аналізу' }, { status: 400 });
+      return ApiResponse.error('Відсутній текст резюме для аналізу', ERROR_CODES.BAD_REQUEST, 400);
     }
 
     // 2. Prepare Prompt
@@ -59,12 +59,11 @@ export async function POST(req: Request, { params }: Params) {
     // Parse JSON safely
     let result;
     try {
-      // Find JSON block if AI added extra text
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       result = JSON.parse(jsonMatch ? jsonMatch[0] : response);
     } catch (e) {
       console.error('AI JSON Parse Error:', response);
-      return NextResponse.json({ error: 'Помилка форматування відповіді AI' }, { status: 500 });
+      return ApiResponse.error('Помилка форматування відповіді AI', ERROR_CODES.INTERNAL_ERROR, 500);
     }
 
     // 4. Update Candidate record
@@ -82,11 +81,10 @@ export async function POST(req: Request, { params }: Params) {
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (updateError) return ApiResponse.handle(updateError, 'candidate_score');
 
-    return NextResponse.json(updated);
+    return ApiResponse.success(updated);
   } catch (e: any) {
-    console.error('Candidate Score Error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'candidate_score');
   }
 }

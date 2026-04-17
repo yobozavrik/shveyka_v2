@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') || '30');
@@ -13,36 +15,34 @@ export async function GET(request: Request) {
 
     const dateFrom = new Date();
     dateFrom.setDate(dateFrom.getDate() - days);
+    const dateFromStr = dateFrom.toISOString().split('T')[0];
 
-    const [entriesRes, defectsRes] = await Promise.all([
-      supabase
-        .from('operation_entries')
-        .select('entry_date, quantity, status')
-        .gte('entry_date', dateFrom.toISOString().split('T')[0])
-        .eq('status', 'confirmed'),
-      supabase
-        .from('defects')
-        .select('created_at, quantity')
-        .gte('created_at', dateFrom.toISOString())
-    ]);
+    // 1. Confirmed units trend
+    const { data: entries, error } = await supabase
+      .from('task_entries')
+      .select('quantity, recorded_at')
+      .eq('status', 'approved')
+      .gte('recorded_at', dateFromStr);
 
-    if (entriesRes.error || defectsRes.error) {
-      console.error('Supabase error in production trend:', entriesRes.error || defectsRes.error);
-      return NextResponse.json({ error: 'Database error' }, { status: 500 });
-    }
+    if (error) return ApiResponse.handle(error, 'analytics_production_trend');
 
-    const entries = entriesRes.data || [];
-    const defects = defectsRes.data || [];
+    // 2. Defects trend
+    const { data: defects, error: defectError } = await supabase
+      .from('operation_defects')
+      .select('quantity, created_at')
+      .gte('created_at', dateFromStr);
 
-    // Group by date
+    if (defectError) return ApiResponse.handle(defectError, 'analytics_production_trend');
+
     const dateMap: Record<string, { confirmed_units: number; defects: number }> = {};
-    entries.forEach((e: { entry_date: string; quantity: number }) => {
-      const d = e.entry_date;
-      if (!dateMap[d]) dateMap[d] = { confirmed_units: 0, defects: 0 };
-      dateMap[d].confirmed_units += e.quantity;
+
+    (entries || []).forEach((e: { quantity: number; recorded_at: string }) => {
+      const date = e.recorded_at;
+      if (!dateMap[date]) dateMap[date] = { confirmed_units: 0, defects: 0 };
+      dateMap[date].confirmed_units += e.quantity;
     });
 
-    defects.forEach((d: { created_at: string; quantity: number }) => {
+    (defects || []).forEach((d: { created_at: string; quantity: number }) => {
       const date = d.created_at.split('T')[0];
       if (!dateMap[date]) dateMap[date] = { confirmed_units: 0, defects: 0 };
       dateMap[date].defects += d.quantity;
@@ -52,9 +52,8 @@ export async function GET(request: Request) {
       .map(([date, vals]) => ({ date, ...vals }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    return NextResponse.json(result);
+    return ApiResponse.success(result);
   } catch (e: any) {
-    console.error('Production trend GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'analytics_production_trend');
   }
 }

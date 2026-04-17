@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { requireAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET() {
   try {
-    const auth = await requireAuth();
+    await requireAuth();
     const supabase = await createServerClient(true);
     const { data, error } = await supabase
       .from('route_cards')
@@ -14,18 +15,11 @@ export async function GET() {
       `)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Supabase error Route Cards GET:', error);
-      return NextResponse.json({ error: error.message, data: [] }, { status: 500 });
-    }
+    if (error) return ApiResponse.handle(error, 'route_cards_get');
     
-    return NextResponse.json(Array.isArray(data) ? data : []);
+    return ApiResponse.success(Array.isArray(data) ? data : []);
   } catch (e: any) {
-    if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (e.message === 'Forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    
-    console.error('Route Cards GET exception:', e);
-    return NextResponse.json({ error: e.message, data: [] }, { status: 500 });
+    return ApiResponse.handle(e, 'route_cards_get');
   }
 }
 
@@ -36,7 +30,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient(true);
 
     if (!body.product_model_id) {
-      return NextResponse.json({ error: 'product_model_id is required' }, { status: 400 });
+      return ApiResponse.error('product_model_id is required', ERROR_CODES.BAD_REQUEST, 400);
     }
 
     const { data: model, error: modelErr } = await supabase
@@ -45,13 +39,12 @@ export async function POST(request: Request) {
       .eq('id', Number(body.product_model_id))
       .single();
 
-    if (modelErr || !model) {
-      return NextResponse.json({ error: 'Model not found' }, { status: 404 });
-    }
+    if (modelErr) return ApiResponse.handle(modelErr, 'route_cards_post');
+    if (!model) return ApiResponse.error('Model not found', ERROR_CODES.NOT_FOUND, 404);
 
     const sourcePayload = model.source_payload as { seed?: boolean } | null;
     if (!sourcePayload || sourcePayload.seed !== true) {
-      return NextResponse.json({ error: 'Route cards can be created only for seed models' }, { status: 400 });
+      return ApiResponse.error('Route cards can be created only for seed models', ERROR_CODES.BAD_REQUEST, 400);
     }
 
     // 1. Create route card
@@ -67,12 +60,10 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (rcErr) return NextResponse.json({ error: rcErr.message }, { status: 500 });
+    if (rcErr) return ApiResponse.handle(rcErr, 'route_cards_post');
 
-    return NextResponse.json(rc, { status: 201 });
+    return ApiResponse.success(rc, 201);
   } catch (e: any) {
-    if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (e.message === 'Forbidden') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'route_cards_post');
   }
 }

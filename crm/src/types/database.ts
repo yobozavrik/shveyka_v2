@@ -132,7 +132,7 @@ export type ProductionBatch = {
   product_model_id: number;
   quantity: number;
   priority: string;
-  status: 'planned' | 'cutting' | 'sewing' | 'completed' | 'cancelled';
+  status: 'created' | 'cutting' | 'sewing' | 'overlock' | 'straight_stitch' | 'coverlock' | 'packaging' | 'ready' | 'shipped' | 'closed' | 'cancelled';
   start_date: string | null;
   due_date: string | null;
   cutting_status: 'locked' | 'available' | 'in_progress' | 'completed';
@@ -382,18 +382,6 @@ export type SupplyItem = {
   created_at: string;
   // Joins
   materials?: Material;
-};
-
-export type MaterialNorm = {
-  id: number;
-  product_model_id: number;
-  material_id: number;
-  quantity_per_unit: number;   // сколько материала на 1 изделие
-  created_at: string;
-  updated_at: string;
-  // Joins
-  materials?: Material;
-  product_models?: ProductModel;
 };
 
 export type StockMovement = {

@@ -1,25 +1,20 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
-/**
- * GET /api/production-orders/:id/requirements
- *
- * Returns material requirements for a production order with overall readiness status.
- * Recalculates availability from current inventory_balances before returning.
- */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const resolvedParams = await params;
     const orderId = parseInt(resolvedParams.id);
     if (isNaN(orderId)) {
-      return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+      return ApiResponse.error('Invalid order ID', ERROR_CODES.BAD_REQUEST, 400);
     }
 
     const supabase = await createServerClient(true);
@@ -32,7 +27,7 @@ export async function GET(
       .single();
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Замовлення не знайдено' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     // Refresh requirements to get current stock availability
@@ -42,40 +37,26 @@ export async function GET(
 
     if (calcError) {
       console.error('[Requirements] Recalc error:', calcError);
-      // Don't fail — return existing data if recalc failed
     }
 
     // Fetch requirements
     const { data: requirements, error: reqError } = await supabase
       .from('production_order_materials')
       .select(`
-        id,
-        material_id,
-        material_name,
-        required_quantity,
-        available_quantity,
-        shortage_quantity,
-        unit,
-        item_type,
-        unit_of_measure,
-        calculation_source,
-        notes
+        id, material_id, material_name, required_quantity, available_quantity, shortage_quantity,
+        unit, item_type, unit_of_measure, calculation_source, notes
       `)
       .eq('order_id', orderId)
       .order('material_name');
 
-    if (reqError) {
-      return NextResponse.json({ error: reqError.message }, { status: 500 });
-    }
+    if (reqError) return ApiResponse.handle(reqError, 'production_order_requirements');
 
     const materials = requirements || [];
-
-    // Determine overall status
     const hasShortage = materials.some(
       (r) => parseFloat(String(r.shortage_quantity)) > 0
     );
 
-    return NextResponse.json({
+    return ApiResponse.success({
       order_id: orderId,
       order_number: order.order_number,
       order_status: order.status,
@@ -95,7 +76,6 @@ export async function GET(
       })),
     });
   } catch (e: any) {
-    console.error('[Requirements] Exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'production_order_requirements');
   }
 }

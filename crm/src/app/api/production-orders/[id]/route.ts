@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -65,13 +67,13 @@ function sameLines(a: EditableLine[], b: EditableLine[]) {
 export async function PATCH(request: Request, { params }: Params) {
   const auth = await getAuth();
   if (!auth || !ALLOWED_ROLES.includes(auth.role)) {
-    return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+    return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
   }
 
   const { id } = await params;
   const orderId = parseInt(id, 10);
   if (Number.isNaN(orderId)) {
-    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 });
+    return ApiResponse.error('Invalid order id', ERROR_CODES.BAD_REQUEST, 400);
   }
 
   const body = await request.json().catch(() => ({}));
@@ -84,7 +86,7 @@ export async function PATCH(request: Request, { params }: Params) {
     .single();
 
   if (currentError || !currentOrder) {
-    return NextResponse.json({ error: 'Замовлення не знайдено' }, { status: 404 });
+    return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
   }
 
   const { data: currentLines, error: currentLinesError } = await supabase
@@ -94,7 +96,7 @@ export async function PATCH(request: Request, { params }: Params) {
     .order('id', { ascending: true });
 
   if (currentLinesError) {
-    return NextResponse.json({ error: currentLinesError.message }, { status: 500 });
+    return ApiResponse.handle(currentLinesError, 'production_order_patch');
   }
 
   const nextValues: Partial<Record<EditableField, any>> = {};
@@ -140,15 +142,15 @@ export async function PATCH(request: Request, { params }: Params) {
 
   if (hasLinesPayload) {
     if (!normalizedNextLines || normalizedNextLines.length === 0) {
-      return NextResponse.json({ error: 'Замовлення повинно містити хоча б одну модель' }, { status: 400 });
+      return ApiResponse.error('Замовлення повинно містити хоча б одну модель', ERROR_CODES.BAD_REQUEST, 400);
     }
 
     for (const line of normalizedNextLines) {
       if (!line.model_name) {
-        return NextResponse.json({ error: 'Кожна позиція замовлення повинна мати назву моделі' }, { status: 400 });
+        return ApiResponse.error('Кожна позиція замовлення повинна мати назву моделі', ERROR_CODES.BAD_REQUEST, 400);
       }
       if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
-        return NextResponse.json({ error: 'Кількість у позиції має бути додатною' }, { status: 400 });
+        return ApiResponse.error('Кількість у позиції має бути додатною', ERROR_CODES.BAD_REQUEST, 400);
       }
     }
 
@@ -162,7 +164,7 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   if (changes.length === 0) {
-    return NextResponse.json({ ...currentOrder, changes_logged: 0 });
+    return ApiResponse.success({ ...currentOrder, changes_logged: 0 });
   }
 
   const now = new Date().toISOString();
@@ -174,10 +176,10 @@ export async function PATCH(request: Request, { params }: Params) {
       .eq('order_id', orderId);
 
     if (deleteLinesError) {
-      return NextResponse.json({ error: deleteLinesError.message }, { status: 500 });
+      return ApiResponse.handle(deleteLinesError, 'production_order_patch');
     }
 
-    const linesToInsert = normalizedNextLines.map((line) => ({
+    const linesToInsert = normalizedNextLines.map((line: EditableLine) => ({
       order_id: orderId,
       model_id: line.model_id,
       model_name: line.model_name,
@@ -206,12 +208,12 @@ export async function PATCH(request: Request, { params }: Params) {
         await supabase.from('production_order_lines').insert(restoreLines);
       }
 
-      return NextResponse.json({ error: insertLinesError.message }, { status: 500 });
+      return ApiResponse.handle(insertLinesError, 'production_order_patch');
     }
   }
 
   const nextTotalQuantity = linesChanged && normalizedNextLines
-    ? normalizedNextLines.reduce((sum, line) => sum + line.quantity, 0)
+    ? normalizedNextLines.reduce((sum: number, line: EditableLine) => sum + line.quantity, 0)
     : Number((currentOrder as any).total_quantity || 0);
   const nextTotalLines = linesChanged && normalizedNextLines
     ? normalizedNextLines.length
@@ -244,7 +246,7 @@ export async function PATCH(request: Request, { params }: Params) {
         await supabase.from('production_order_lines').insert(restoreLines);
       }
     }
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return ApiResponse.handle(updateError, 'production_order_patch');
   }
 
   for (const change of changes) {
@@ -266,7 +268,7 @@ export async function PATCH(request: Request, { params }: Params) {
     }
   }
 
-  return NextResponse.json({
+  return ApiResponse.success({
     ...updatedOrder,
     changes_logged: changes.length,
   });
@@ -275,13 +277,13 @@ export async function PATCH(request: Request, { params }: Params) {
 export async function DELETE(request: Request, { params }: Params) {
   const auth = await getAuth();
   if (!auth || !ALLOWED_ROLES.includes(auth.role)) {
-    return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+    return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
   }
 
   const { id } = await params;
   const orderId = parseInt(id, 10);
   if (Number.isNaN(orderId)) {
-    return NextResponse.json({ error: 'Invalid order id' }, { status: 400 });
+    return ApiResponse.error('Invalid order id', ERROR_CODES.BAD_REQUEST, 400);
   }
 
   const supabase = await createServerClient(true);
@@ -293,11 +295,11 @@ export async function DELETE(request: Request, { params }: Params) {
     .single();
 
   if (currentError || !currentOrder) {
-    return NextResponse.json({ error: 'Замовлення не знайдено' }, { status: 404 });
+    return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
   }
 
   if (!['draft', 'approved'].includes((currentOrder as any).status)) {
-    return NextResponse.json({ error: 'Видаляти можна лише чернетки та затверджені замовлення' }, { status: 400 });
+    return ApiResponse.error('Видаляти можна лише чернетки та затверджені замовлення', ERROR_CODES.BAD_REQUEST, 400);
   }
 
   const { data: currentLines, error: linesError } = await supabase
@@ -306,7 +308,7 @@ export async function DELETE(request: Request, { params }: Params) {
     .eq('order_id', orderId);
 
   if (linesError) {
-    return NextResponse.json({ error: linesError.message }, { status: 500 });
+    return ApiResponse.handle(linesError, 'production_order_delete');
   }
 
   const { error: deleteLinesError } = await supabase
@@ -315,7 +317,7 @@ export async function DELETE(request: Request, { params }: Params) {
     .eq('order_id', orderId);
 
   if (deleteLinesError) {
-    return NextResponse.json({ error: deleteLinesError.message }, { status: 500 });
+    return ApiResponse.handle(deleteLinesError, 'production_order_delete');
   }
 
   const { error: deleteOrderError } = await supabase
@@ -337,7 +339,7 @@ export async function DELETE(request: Request, { params }: Params) {
       await supabase.from('production_order_lines').insert(restoreLines);
     }
 
-    return NextResponse.json({ error: deleteOrderError.message }, { status: 500 });
+    return ApiResponse.handle(deleteOrderError, 'production_order_delete');
   }
 
   try {
@@ -357,5 +359,5 @@ export async function DELETE(request: Request, { params }: Params) {
     console.warn('[ProductionOrder] Audit log failed:', auditError);
   }
 
-  return NextResponse.json({ success: true });
+  return ApiResponse.success({ success: true });
 }
