@@ -1,0 +1,841 @@
+openapi: 3.0.3
+info:
+  title: Worker App API
+  description: API для мобільного додатку працівників швейного цеху
+  version: 1.0.0
+  contact:
+    name: MES Цех Dev Team
+
+servers:
+  - url: http://localhost:3005
+    description: Local development
+
+# ──────────────────────────────────────────────
+# Authentication
+# ──────────────────────────────────────────────
+paths:
+  /api/mobile/auth/login:
+    post:
+      summary: Вхід працівника
+      description: Аутентифікація за номером працівника + PIN + пароль. Повертає JWT cookie `mes_worker_token` (30 днів).
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employee_number, pin, password]
+              properties:
+                employee_number:
+                  type: string
+                  example: "042"
+                pin:
+                  type: string
+                  example: "1234"
+                password:
+                  type: string
+                  example: "secret123"
+      responses:
+        '200':
+          description: Успішний вхід
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "mes_worker_token=eyJhbG...; Path=/; HttpOnly; Max-Age=2592000"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Невірні дані
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid credentials"
+
+  /api/mobile/auth/me:
+    get:
+      summary: Поточний користувач
+      description: Повертає дані авторизованого працівника
+      tags: [Auth]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Дані користувача
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+
+  /api/mobile/auth/logout:
+    post:
+      summary: Вихід
+      description: Видаляє cookie `mes_worker_token`
+      tags: [Auth]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Cookie видалено
+
+# ──────────────────────────────────────────────
+# Tasks
+# ──────────────────────────────────────────────
+  /api/mobile/tasks:
+    get:
+      summary: Список активних задач
+      description: Повертає задачі зі статусами `pending`, `accepted`, `in_progress` для ролі працівника
+      tags: [Tasks]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Список задач
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskListItem'
+
+    post:
+      summary: Авто-створення задачі
+      description: Створює задачу у `batch_tasks` для партії + етапу. Якщо задача вже існує — повертає її з `created: false`.
+      tags: [Tasks]
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [batch_id, stage_code]
+              properties:
+                batch_id:
+                  type: integer
+                  example: 234
+                stage_code:
+                  type: string
+                  enum: [cutting, sewing, overlock, straight_stitch, coverlock, packaging, embroidery]
+                  example: "cutting"
+                operation_id:
+                  type: integer
+                  example: 42
+      responses:
+        '200':
+          description: Задача створена або знайдена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/Task'
+                  created:
+                    type: boolean
+                    example: true
+        '403':
+          description: Роль не збігається
+        '404':
+          description: Stage або Batch не знайдено
+
+  /api/mobile/tasks/{id}:
+    get:
+      summary: Деталі задачі
+      description: Повна інформація: задача, batch, stage, entries, legacy_nastils, embroidery_nastils
+      tags: [Tasks]
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Деталі задачі
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetail'
+
+    post:
+      summary: Прийняти / завершити задачу
+      description: Зміна статусу задачі: `pending → accepted → completed`
+      tags: [Tasks]
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [accept, complete]
+                  example: "accept"
+      responses:
+        '200':
+          description: Статус змінено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          description: Неможлива дія
+
+  /api/mobile/tasks/{id}/entries:
+    post:
+      summary: Додати запис виконання
+      description: Зберігає результат роботи у `task_entries`. Для розкрою: `quantity = quantity_per_nastil × size_count`.
+      tags: [Tasks]
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            description: task_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntryInput'
+      responses:
+        '200':
+          description: Запис створено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry:
+                    $ref: '#/components/schemas/Entry'
+                  legacy_nastil:
+                    type: object
+                    nullable: true
+        '400':
+          description: Валідація помилок
+        '403':
+          description: Forbidden — роль не збігається
+        '404':
+          description: Task або Operation не знайдено
+
+# ──────────────────────────────────────────────
+# Employee
+# ──────────────────────────────────────────────
+  /api/mobile/employee/stats:
+    get:
+      summary: Статистика працівника
+      description: Повна статистика: заробіток, сьогодні, якість, ціль дня, активність, задачі в роботі
+      tags: [Employee]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Статистика
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeStats'
+
+  /api/mobile/employee/payroll:
+    get:
+      summary: Історія виплат
+      description: Останні 12 періодів зарплати з сумами
+      tags: [Employee]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Історія
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payroll_history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PayrollPeriod'
+
+# ──────────────────────────────────────────────
+# Notifications
+# ──────────────────────────────────────────────
+  /api/mobile/notifications/count:
+    get:
+      summary: Кількість нових задач
+      description: Повертає кількість pending задач для ролі працівника
+      tags: [Notifications]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Лічильник
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pending_tasks:
+                    type: integer
+                    example: 3
+                  urgent_tasks:
+                    type: integer
+                    example: 1
+
+  /api/mobile/notifications/list:
+    get:
+      summary: Список нових задач
+      description: Детальний список pending задач з info про batch
+      tags: [Notifications]
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationItem'
+
+# ──────────────────────────────────────────────
+# Batches
+# ──────────────────────────────────────────────
+  /api/mobile/batches/{id}:
+    get:
+      summary: Деталі партії
+      description: Інформація про партію + route_card + fabric
+      tags: [Batches]
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Партія
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDetail'
+
+  /api/mobile/batches/{id}/pipeline:
+    get:
+      summary: Конвеєр партії
+      description: Всі операції конвеєра з кількістю по розмірах
+      tags: [Batches]
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Pipeline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResponse'
+
+# ──────────────────────────────────────────────
+# Components
+# ──────────────────────────────────────────────
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: mes_worker_token
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        employee:
+          $ref: '#/components/schemas/Employee'
+        role:
+          type: string
+          example: "cutting"
+
+    MeResponse:
+      type: object
+      properties:
+        employee:
+          $ref: '#/components/schemas/Employee'
+        role:
+          type: string
+        username:
+          type: string
+
+    Employee:
+      type: object
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+          example: "Іван Петренко"
+        employee_number:
+          type: string
+          example: "042"
+        position:
+          type: string
+          example: "Швець-моторист"
+        department:
+          type: string
+        photo_url:
+          type: string
+          nullable: true
+        status:
+          type: string
+          example: "active"
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        batch_id:
+          type: integer
+        stage_id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, accepted, in_progress, completed, cancelled]
+        assigned_role:
+          type: string
+        accepted_by_employee_id:
+          type: integer
+          nullable: true
+        accepted_at:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          nullable: true
+
+    TaskListItem:
+      allOf:
+        - $ref: '#/components/schemas/Task'
+        - type: object
+          properties:
+            batch:
+              type: object
+              properties:
+                batch_number:
+                  type: string
+                  example: "П-234"
+                quantity:
+                  type: integer
+                is_urgent:
+                  type: boolean
+                product_models:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      example: "Футболка базова"
+            summary:
+              type: object
+              properties:
+                rolls:
+                  type: integer
+                quantity:
+                  type: integer
+
+    TaskDetail:
+      type: object
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        batch:
+          $ref: '#/components/schemas/Batch'
+        stage:
+          $ref: '#/components/schemas/Stage'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entry'
+        legacy_nastils:
+          type: array
+          items:
+            type: object
+        embroidery_nastils:
+          type: array
+          items:
+            type: object
+        available_colors:
+          type: array
+          items:
+            type: string
+        summary:
+          type: object
+          properties:
+            entries:
+              type: integer
+            quantity:
+              type: integer
+
+    Batch:
+      type: object
+      properties:
+        id:
+          type: integer
+        batch_number:
+          type: string
+          example: "П-234"
+        status:
+          type: string
+        quantity:
+          type: integer
+        is_urgent:
+          type: boolean
+        fabric_type:
+          type: string
+          nullable: true
+        fabric_color:
+          type: string
+          nullable: true
+        size_variants:
+          type: object
+          nullable: true
+        product_models:
+          type: object
+          properties:
+            name:
+              type: string
+            sku:
+              type: string
+
+    BatchDetail:
+      allOf:
+        - $ref: '#/components/schemas/Batch'
+        - type: object
+          properties:
+            route_card:
+              type: object
+              nullable: true
+
+    Stage:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+          example: "cutting"
+        name:
+          type: string
+          example: "Розкрой"
+        assigned_role:
+          type: string
+        operations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              code:
+                type: string
+                example: "nastil"
+              name:
+                type: string
+                example: "Настил"
+              field_schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    key:
+                      type: string
+                    label:
+                      type: string
+                    type:
+                      type: string
+                      enum: [text, number, select, boolean, date]
+                    required:
+                      type: boolean
+
+    Entry:
+      type: object
+      properties:
+        id:
+          type: integer
+        task_id:
+          type: integer
+        batch_id:
+          type: integer
+        employee_id:
+          type: integer
+        stage_id:
+          type: integer
+          nullable: true
+        operation_id:
+          type: integer
+          nullable: true
+        entry_number:
+          type: integer
+        quantity:
+          type: integer
+          nullable: true
+        data:
+          type: object
+          description: JSONB — дані форми
+        notes:
+          type: string
+          nullable: true
+        recorded_at:
+          type: string
+          format: date-time
+
+    EntryInput:
+      type: object
+      required: [operation_id, data]
+      properties:
+        operation_id:
+          type: integer
+          example: 42
+        data:
+          type: object
+          description: Значення полів з field_schema
+          example:
+            nastil_number: "1"
+            reel_width_cm: 150
+            reel_length_m: 50
+            fabric_color: "чорний"
+            weight_kg: 12.5
+            quantity_per_nastil: 21
+            remainder_kg: 2.3
+        size_rows:
+          type: array
+          description: Overlock payload. Each row carries size, quantity, and defect quantity.
+          items:
+            type: object
+            required: [size, quantity, defect_quantity]
+            properties:
+              size:
+                type: string
+              quantity:
+                type: integer
+                minimum: 0
+              defect_quantity:
+                type: integer
+                minimum: 0
+        notes:
+          type: string
+          nullable: true
+
+    EmployeeStats:
+      type: object
+      properties:
+        employee:
+          $ref: '#/components/schemas/Employee'
+        earnings:
+          type: object
+          properties:
+            current_period:
+              type: object
+              properties:
+                amount:
+                  type: number
+                quantity:
+                  type: integer
+                rate:
+                  type: number
+            total:
+              type: object
+              properties:
+                amount:
+                  type: number
+                quantity:
+                  type: integer
+        today:
+          type: object
+          properties:
+            operations:
+              type: integer
+            quantity:
+              type: integer
+            batches:
+              type: integer
+            earnings:
+              type: number
+            yesterday_quantity:
+              type: integer
+        quality:
+          type: object
+          properties:
+            good:
+              type: integer
+            defect:
+              type: integer
+            percentage:
+              type: number
+            last_defect_date:
+              type: string
+              nullable: true
+            last_defect_batch:
+              type: string
+              nullable: true
+        daily_goal:
+          type: object
+          properties:
+            target:
+              type: integer
+            current:
+              type: integer
+            percentage:
+              type: integer
+            remaining:
+              type: integer
+            estimated_finish:
+              type: string
+              nullable: true
+        activity_by_day:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              amount:
+                type: number
+              quantity:
+                type: integer
+              operations:
+                type: integer
+        stage_stats:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              name:
+                type: string
+              operations:
+                type: integer
+              quantity:
+                type: integer
+              earnings:
+                type: number
+        current_tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              batch_number:
+                type: string
+              product_name:
+                type: string
+              status:
+                type: string
+              stage_name:
+                type: string
+
+    PayrollPeriod:
+      type: object
+      properties:
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+          nullable: true
+        is_paid:
+          type: boolean
+        paid_date:
+          type: string
+          nullable: true
+        amount:
+          type: number
+        quantity:
+          type: integer
+
+    NotificationItem:
+      type: object
+      properties:
+        task_id:
+          type: integer
+        batch_number:
+          type: string
+        product_name:
+          type: string
+        stage_name:
+          type: string
+        is_urgent:
+          type: boolean
+        created_at:
+          type: string
+
+    PipelineResponse:
+      type: object
+      properties:
+        pipeline:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              code:
+                type: string
+              status:
+                type: string
+                enum: [locked, available, in_progress, completed]
+              total_confirmed:
+                type: integer
+              total_submitted:
+                type: integer
+              sizes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    size:
+                      type: string
+                    confirmed_qty:
+                      type: integer
+                    submitted_qty:
+                      type: integer
+                    defect_qty:
+                      type: integer
+        total_qty:
+          type: integer
+        free_mode:
+          type: boolean

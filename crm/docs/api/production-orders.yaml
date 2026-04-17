@@ -1,0 +1,720 @@
+openapi: 3.0.3
+info:
+  title: Shveyka CRM API
+  version: 2.1.0
+  description: >
+    API виробничого контуру CRM Shveyka MES.
+    Покриває замовлення, партії, аналітику, зарплату, склад, персонал.
+servers:
+  - url: /api
+
+security:
+  - CookieAuth: []
+
+paths:
+  # ─── Production Orders ───
+  /production-orders:
+    get:
+      tags: [ProductionOrders]
+      summary: Список виробничих замовлень
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+          description: Фільтр по статусу
+        - in: query
+          name: order_type
+          schema: { type: string, enum: [stock, customer] }
+          description: Тип замовлення
+      responses:
+        '200':
+          description: Список замовлень
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductionOrder'
+    post:
+      tags: [ProductionOrders]
+      summary: Створити замовлення
+      security: [{ CookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_type, lines]
+              properties:
+                order_type:
+                  type: string
+                  enum: [stock, customer]
+                target_location_id:
+                  type: integer
+                  nullable: true
+                planned_completion_date:
+                  type: string
+                  format: date
+                  nullable: true
+                lines:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ProductionOrderLineCreateRequest'
+      responses:
+        '201':
+          description: Замовлення створено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionOrder'
+
+  /production-orders/{id}:
+    get:
+      tags: [ProductionOrders]
+      summary: Отримати замовлення
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Замовлення
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionOrder'
+    patch:
+      tags: [ProductionOrders]
+      summary: Оновити поля замовлення
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_name: { type: string, nullable: true }
+                customer_phone: { type: string, nullable: true }
+                customer_email: { type: string, nullable: true }
+                target_location_id: { type: integer, nullable: true }
+                priority: { type: string, enum: [low, normal, high, urgent] }
+                planned_completion_date: { type: string, format: date, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Замовлення оновлено
+
+  /production-orders/{id}/{action}:
+    post:
+      tags: [ProductionOrders]
+      summary: Дія над замовленням
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: action
+          required: true
+          schema:
+            type: string
+            enum: [approve, material_check, launch, cancel-launch, complete, transfer_to_warehouse, close, cancel]
+          description: |
+            **approve** — затвердити замовлення (draft → approved)
+            **material_check** — перевірити матеріали (MRP розрахунок)
+            **launch** — запустити у виробництво (approved → launched)
+            **cancel-launch** — скасувати запуск (launched → approved)
+            **complete** — завершити замовлення (launched/in_production → completed)
+            **transfer_to_warehouse** — передати на склад (completed → warehouse_transferred)
+            **close** — закрити (warehouse_transferred → closed)
+            **cancel** — скасувати замовлення (draft/approved → cancelled)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Дія виконана
+        '400':
+          description: Неможлива дія для поточного статусу
+
+  /production-orders/{id}/lines:
+    post:
+      tags: [ProductionOrderLines]
+      summary: Додати позицію в замовлення
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionOrderLineCreateRequest'
+      responses:
+        '201':
+          description: Позиція створена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionOrderLine'
+
+  /production-orders/{id}/events:
+    get:
+      tags: [ProductionOrderEvents]
+      summary: Історія подій замовлення
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Список подій
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductionOrderEvent'
+
+  /production-orders/{id}/requirements:
+    get:
+      tags: [ProductionOrderRequirements]
+      summary: Розрахунок потреби матеріалів
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Результат розрахунку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequirementsResponse'
+
+  /production-orders/{id}/batches:
+    post:
+      tags: [ProductionBatches]
+      summary: Створити партію вручну з замовлення
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model_id, quantity]
+              properties:
+                model_id: { type: integer }
+                quantity: { type: number, minimum: 1 }
+                planned_start_date: { type: string, format: date, nullable: true }
+                fabric_type: { type: string, nullable: true }
+                fabric_colors:
+                  type: array
+                  items:
+                    type: object
+                    required: [color, rolls]
+                    properties:
+                      color: { type: string }
+                      rolls: { type: integer, minimum: 1 }
+                selected_sizes:
+                  type: array
+                  items: { type: string }
+                notes: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Партія створена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductionBatch'
+
+  # ─── Batches ───
+  /batches:
+    get:
+      tags: [ProductionBatches]
+      summary: Список партій
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+          description: Фільтр по статусу або "all" / "active"
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          description: Список партій з operations_progress
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductionBatchWithProgress'
+    post:
+      tags: [ProductionBatches]
+      summary: Створити партію (вільну, без замовлення)
+      security: [{ CookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionBatchCreateRequest'
+      responses:
+        '201':
+          description: Партія створена
+
+  /batches/{id}:
+    get:
+      tags: [ProductionBatches]
+      summary: Отримати партію
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Партія
+    put:
+      tags: [ProductionBatches]
+      summary: Оновити партію
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionBatchUpdateRequest'
+      responses:
+        '200':
+          description: Партія оновлена
+    delete:
+      tags: [ProductionBatches]
+      summary: Видалити партію
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Партія видалена
+
+  /batches/{id}/launch:
+    post:
+      tags: [ProductionBatches]
+      summary: Передати партію в розкрій
+      description: |
+        Створює batch_task для етапу cutting.
+        Змінює статус партії: created → cutting.
+        Не можна запустити якщо вже є активне завдання.
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Партію передано в розкрій
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  batch:
+                    $ref: '#/components/schemas/ProductionBatch'
+                  task:
+                    $ref: '#/components/schemas/BatchTask'
+
+  /batches/{id}/stages:
+    get:
+      tags: [ProductionBatches]
+      summary: Дерево етапів партії
+      description: Повертає всі етапи з операціями та записами для CRM модалки
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Стадії, задачі й записи по партії
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStageFlowResponse'
+    post:
+      tags: [ProductionBatches]
+      summary: Передати партію на наступний етап
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [advance]
+      responses:
+        '200':
+          description: Наступний етап створено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batch:
+                    $ref: '#/components/schemas/ProductionBatch'
+                  current_stage:
+                    $ref: '#/components/schemas/BatchStageSummary'
+                  next_stage:
+                    $ref: '#/components/schemas/BatchStageSummary'
+                  task:
+                    $ref: '#/components/schemas/BatchTask'
+
+  /batches/{id}/status:
+    patch:
+      tags: [ProductionBatches]
+      summary: Оновити статус партії
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string }
+      responses:
+        '200':
+          description: Статус оновлено
+
+  /batches/{id}/pipeline:
+    get:
+      tags: [ProductionBatches]
+      summary: Pipeline snapshot партії
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Pipeline
+
+  # ─── Analytics ───
+  /analytics/dashboard:
+    get:
+      tags: [Analytics]
+      summary: Дашборд аналітика
+      security: [{ CookieAuth: [] }]
+      parameters:
+        - in: query
+          name: period
+          schema: { type: string, enum: [today, week, month], default: week }
+      responses:
+        '200':
+          description: Дані дашборду
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardAnalytics'
+
+  # ─── Auth ───
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: CRM Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Успішний вхід
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: JWT cookie `mes_auth_token`
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: CRM Logout
+      responses:
+        '200':
+          description: Вийшов
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Поточна сесія
+      responses:
+        '200':
+          description: Дані користувача
+
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: mes_auth_token
+
+  schemas:
+    ProductionOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        order_number: { type: string }
+        status: { type: string }
+        order_type: { type: string }
+        customer_name: { type: string, nullable: true }
+        priority: { type: string }
+        planned_completion_date: { type: string, format: date, nullable: true }
+        actual_start_date: { type: string, nullable: true }
+        actual_completion_date: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProductionOrderLine:
+      type: object
+      properties:
+        id: { type: integer }
+        order_id: { type: integer }
+        model_id: { type: integer, nullable: true }
+        model_name: { type: string }
+        model_sku: { type: string, nullable: true }
+        quantity: { type: integer }
+        size: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+
+    ProductionOrderLineCreateRequest:
+      type: object
+      required: [model_name, quantity]
+      properties:
+        model_id: { type: integer, nullable: true }
+        model_name: { type: string }
+        model_sku: { type: string, nullable: true }
+        quantity: { type: integer }
+        size: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+
+    ProductionBatch:
+      type: object
+      properties:
+        id: { type: integer }
+        order_id: { type: integer }
+        batch_number: { type: string }
+        product_model_id: { type: integer }
+        sku: { type: string, nullable: true }
+        quantity: { type: integer }
+        status: { type: string }
+        fabric_type: { type: string, nullable: true }
+        fabric_color: { type: string, nullable: true }
+        size_variants: { type: object, nullable: true }
+        notes: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    BatchTask:
+      type: object
+      properties:
+        id: { type: integer }
+        batch_id: { type: integer }
+        stage_id: { type: integer }
+        task_type: { type: string }
+        assigned_role: { type: string }
+        status: { type: string }
+        accepted_by_employee_id: { type: integer, nullable: true }
+        launched_by_user_id: { type: integer, nullable: true }
+        launched_at: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+
+    ProductionOrderEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        order_id: { type: integer }
+        action: { type: string }
+        from_status: { type: string, nullable: true }
+        to_status: { type: string, nullable: true }
+        stage_label: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+        payload: { type: object }
+        created_at: { type: string, format: date-time }
+        created_by: { type: integer, nullable: true }
+
+    RequirementsResponse:
+      type: object
+      properties:
+        order_id: { type: integer }
+        can_launch: { type: boolean }
+        shortages:
+          type: array
+          items:
+            type: object
+            properties:
+              material_name: { type: string }
+              required_quantity: { type: number }
+              available_quantity: { type: number }
+              shortage_quantity: { type: number }
+
+    BatchStageFlowResponse:
+      type: object
+      properties:
+        batch_id: { type: integer }
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchStageSummary'
+
+    BatchStageSummary:
+      type: object
+      properties:
+        stage_id: { type: integer }
+        stage_code: { type: string }
+        stage_name: { type: string }
+        task_id: { type: integer, nullable: true }
+        task_status: { type: string, nullable: true }
+        entries:
+          type: array
+          items:
+            type: object
+
+    DashboardAnalytics:
+      type: object
+      properties:
+        period: { type: string }
+        summary:
+          type: object
+          properties:
+            active_batches: { type: integer }
+            total_batch_qty: { type: integer }
+            active_employees: { type: integer }
+            entries_count: { type: integer }
+            confirmed_qty: { type: integer }
+            total_earnings: { type: number }
+            pending_approvals: { type: integer }
+        daily:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string }
+              qty: { type: integer }
+              count: { type: integer }
+        top_workers:
+          type: array
+          items:
+            type: object
+            properties:
+              employee_id: { type: integer }
+              full_name: { type: string }
+              qty: { type: integer }
+              count: { type: integer }
+        batches_by_status:
+          type: object
+          additionalProperties: { type: integer }
+
+    ProductionBatchCreateRequest:
+      type: object
+      required: [batch_number, quantity, product_model_id]
+      properties:
+        batch_number: { type: string }
+        quantity: { type: integer }
+        product_model_id: { type: integer }
+        target_location_id: { type: integer, nullable: true }
+        route_card_id: { type: integer, nullable: true }
+        supervisor_id: { type: integer, nullable: true }
+        status: { type: string, default: created }
+        is_urgent: { type: boolean, default: false }
+        priority: { type: string, default: normal }
+        planned_start_date: { type: string, format: date, nullable: true }
+        planned_end_date: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+        size_variants: { type: object, nullable: true }
+        fabric_type: { type: string, nullable: true }
+        fabric_color: { type: string, nullable: true }
+        thread_number: { type: string, nullable: true }
+        embroidery_type: { type: string, nullable: true }
+        embroidery_color: { type: string, nullable: true }
+        nastyl_number: { type: integer, nullable: true }
+        sku: { type: string, nullable: true }
+
+    ProductionBatchUpdateRequest:
+      type: object
+      properties:
+        batch_number: { type: string }
+        quantity: { type: integer }
+        status: { type: string }
+        notes: { type: string, nullable: true }

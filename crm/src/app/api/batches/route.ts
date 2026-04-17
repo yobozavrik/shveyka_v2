@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { requireAuth, getAuth } from '@/lib/auth-server';
 import { z } from 'zod';
+import { appLogger } from '@/lib/logger';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 const BatchSchema = z.object({
   batch_number: z.string().min(1, 'Номер партії обов’язковий'),
@@ -10,7 +12,7 @@ const BatchSchema = z.object({
   target_location_id: z.number().optional().nullable(),
   route_card_id: z.number().optional().nullable(),
   supervisor_id: z.number().optional().nullable(),
-  status: z.enum(['created', 'cutting', 'embroidery', 'sewing', 'quality_control', 'packaging', 'ready', 'closed', 'shipped', 'cancelled']).default('created'),
+  status: z.enum(['created', 'cutting', 'sewing', 'overlock', 'straight_stitch', 'coverlock', 'packaging', 'ready', 'shipped', 'closed', 'cancelled']).default('created'),
   is_urgent: z.boolean().default(false),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
   planned_start_date: z.string().optional().nullable(),
@@ -29,7 +31,7 @@ const BatchSchema = z.object({
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const supabase = await createServerClient(true);
     const { searchParams } = new URL(request.url);
@@ -52,7 +54,7 @@ export async function GET(request: Request) {
 
     if (status && status !== 'all') {
       if (status === 'active') {
-        query = query.in('status', ['created', 'cutting', 'embroidery', 'sewing', 'quality_control', 'packaging', 'ready']);
+        query = query.in('status', ['created', 'cutting', 'sewing', 'overlock', 'straight_stitch', 'coverlock', 'packaging', 'ready']);
       } else {
         query = query.eq('status', status);
       }
@@ -60,64 +62,64 @@ export async function GET(request: Request) {
 
     const { data, error } = await query;
     if (error) {
-      console.error('Supabase error fetching batches:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return ApiResponse.handle(error, 'batches_get');
     }
 
-    // 2. AGGREGATE PROGRESS DATA
+    // 2. PREPARE IDS
     const batches = data || [];
     const batchIds = batches.map(b => b.id);
 
+    // 3. FETCH BATCH TASKS (безопасно)
+    let taskMap: Record<number, { status: string, role: string }> = {};
     if (batchIds.length > 0) {
-      // Get all confirmed entries for these batches
-      const { data: entries } = await supabase
-        .from('operation_entries')
-        .select('production_batch_id, operation_id, quantity')
-        .eq('status', 'approved')
-        .in('production_batch_id', batchIds);
-
-      // Group by batch and operation
-      const progressMap: Record<number, Record<number, number>> = {};
-      for (const entry of (entries || [])) {
-        const bId = entry.production_batch_id;
-        const opId = entry.operation_id;
-        if (!progressMap[bId]) progressMap[bId] = {};
-        progressMap[bId][opId] = (progressMap[bId][opId] || 0) + entry.quantity;
-      }
-
-      // Format response
-      const batchesWithProgress = batches.map(b => ({
-        ...b,
-        operations_progress: progressMap[b.id] || {}
-      }));
-
-      return NextResponse.json(batchesWithProgress);
+      try {
+        const { data: tasks } = await supabase.from('batch_tasks').select('batch_id, status, assigned_role').in('batch_id', batchIds).order('id', { ascending: false });
+        for (const t of (tasks || [])) {
+          if (!taskMap[t.batch_id]) taskMap[t.batch_id] = { status: t.status, role: t.assigned_role };
+        }
+      } catch (e) { console.error('Tasks fetch error', e); }
     }
 
-    return NextResponse.json(batches);
-  } catch (e: any) {
-    console.error('Batches GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    // 4. AGGREGATE PROGRESS (безопасно)
+    let progressMap: Record<number, Record<number, number>> = {};
+    if (batchIds.length > 0) {
+      try {
+        const { data: entries } = await supabase.from('task_entries').select('batch_id, operation_id, quantity').in('batch_id', batchIds);
+        for (const entry of (entries || [])) {
+          const bId = entry.batch_id;
+          const opId = entry.operation_id;
+          if (!progressMap[bId]) progressMap[bId] = {};
+          progressMap[bId][opId] = (progressMap[bId][opId] || 0) + Number(entry.quantity || 0);
+        }
+      } catch (e) { console.error('Entries fetch error', e); }
+    }
+
+    // 5. FORMAT RESPONSE
+    return ApiResponse.success(batches.map(b => ({
+      ...b,
+      operations_progress: progressMap[b.id] || {},
+      task_status: taskMap[b.id]?.status || null,
+      task_role: taskMap[b.id]?.role || null
+    })));
+  } catch (error) {
+    return ApiResponse.handle(error, 'batches_get');
   }
 }
 
 export async function POST(request: Request) {
   try {
     await requireAuth(['admin', 'manager', 'technologist']);
-    
+
     const json = await request.json();
     const result = BatchSchema.safeParse(json);
 
     if (!result.success) {
-      return NextResponse.json({ 
-        error: 'Помилка валідації', 
-        details: result.error.flatten().fieldErrors 
-      }, { status: 400 });
+      return ApiResponse.error('Помилка валідації', ERROR_CODES.VALIDATION_ERROR, 400, result.error.flatten().fieldErrors);
     }
 
     const body = result.data;
-    const auth = await getAuth(); // Отримуємо дані користувача для аудиту
-    
+    const auth = await getAuth(); // Получаем данные пользователя для лога
+
     const supabase = await createServerClient(true);
     // 3. Сохраняем в БД
     const { data: batchData, error } = await supabase
@@ -133,12 +135,35 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      console.error('Supabase Error creating batch:', error);
-      return NextResponse.json({ 
-        error: 'Помилка бази даних', 
-        message: error.message,
-        details: error.details 
-      }, { status: 500 });
+      return ApiResponse.handle(error, 'batches_post');
+    }
+
+    // 3.1. АВТОМАТИЧЕСКИ создаем первую задачу для Раскроя
+    // Логируем создание
+    await appLogger({
+      level: 'user_action',
+      message: `${auth?.username} создал партию ${body.batch_number}`,
+      module: 'batches',
+      action: 'batch_created',
+      userId: auth?.userId?.toString(),
+      username: auth?.username,
+      data: body
+    });
+
+    const { data: cuttingStage } = await supabase
+      .from('production_stages')
+      .select('id, assigned_role')
+      .eq('code', 'cutting')
+      .single();
+
+    if (cuttingStage) {
+      await supabase.from('batch_tasks').insert({
+        batch_id: batchData.id,
+        stage_id: cuttingStage.id,
+        task_type: 'cutting',
+        assigned_role: cuttingStage.assigned_role,
+        status: 'pending'
+      });
     }
 
     // 4. Логування аудиту (не блокує основний запит)
@@ -158,21 +183,9 @@ export async function POST(request: Request) {
       console.error('Audit Log Error (non-critical):', auditErr);
     }
 
-    return NextResponse.json(batchData, { status: 201 });
+    return ApiResponse.success(batchData, 201);
 
-  } catch (err: any) {
-    console.error('Exception in POST /api/batches:', err);
-    
-    if (err.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (err.message === 'Forbidden') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    return NextResponse.json({ 
-      error: 'Внутрішня помилка сервера', 
-      message: err.message 
-    }, { status: 500 });
+  } catch (error) {
+    return ApiResponse.handle(error, 'batches_post');
   }
 }

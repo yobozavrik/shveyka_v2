@@ -14,12 +14,18 @@ function getSupabaseConfig() {
 
 export function getSupabase() {
   const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig();
-  return createClient(supabaseUrl, supabaseAnonKey);
+  return createClient<any>(supabaseUrl, supabaseAnonKey);
 }
 
+// Cache Supabase admin clients per schema at module level
+const supabaseAdminCache = new Map<string, any>();
+
 export function getSupabaseAdmin(schema: string = 'public') {
-  const { supabaseUrl, supabaseServiceKey } = getSupabaseConfig();
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    db: { schema },
-  });
+  if (!supabaseAdminCache.has(schema)) {
+    const { supabaseUrl, supabaseServiceKey } = getSupabaseConfig();
+    supabaseAdminCache.set(schema, createClient<any>(supabaseUrl, supabaseServiceKey, {
+      db: { schema: schema as any },
+    }));
+  }
+  return supabaseAdminCache.get(schema)!;
 }

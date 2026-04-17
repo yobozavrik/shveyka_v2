@@ -65,40 +65,40 @@ export function OrderAssistant({ orderId, orderNumber, orderStatus }: OrderAssis
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors"
-        title="Объяснить статус заказа"
+        className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 rounded-lg transition-colors"
+        title="Пояснити статус замовлення"
       >
         <HelpCircle size={16} />
-        <span>Объяснить</span>
+        <span>Пояснити</span>
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-4 right-4 w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-50 border border-slate-200 dark:border-slate-700 flex flex-col max-h-[70vh]">
-          <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 rounded-t-2xl">
+        <div className="fixed bottom-4 right-4 w-96 bg-[var(--bg-card)] rounded-2xl shadow-2xl z-50 border border-[var(--border)] flex flex-col max-h-[70vh]">
+          <div className="p-4 border-b border-[var(--border)] flex justify-between items-center bg-blue-500/10 rounded-t-2xl">
             <div className="flex items-center gap-2">
-              <MessageCircle size={18} className="text-blue-600" />
+              <MessageCircle size={18} className="text-blue-500" />
               <div>
-                <h3 className="font-semibold text-sm text-slate-800 dark:text-white">
-                  Заказ #{orderNumber || orderId}
+                <h3 className="font-semibold text-sm text-[var(--text-1)]">
+                  Замовлення #{orderNumber || orderId}
                 </h3>
-                <span className="text-xs text-slate-500">AI Ассистент</span>
+                <span className="text-xs text-[var(--text-3)]">AI Асистент</span>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-[var(--bg-hover)] rounded-lg">
               <X size={16} />
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {loading && !explanation ? (
-              <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+              <div className="flex items-center justify-center py-8 gap-2 text-[var(--text-3)]">
                 <Loader2 size={20} className="animate-spin" />
-                <span className="text-sm">Анализирую заказ...</span>
+                <span className="text-sm">Аналізую замовлення...</span>
               </div>
             ) : (
-              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm">
-                <div className="text-xs text-blue-600 font-semibold mb-2 uppercase tracking-wider">Статус: {orderStatus}</div>
-                <div className="whitespace-pre-wrap text-slate-600 dark:text-slate-300">{explanation}</div>
+              <div className="p-3 bg-[var(--bg-card2)] rounded-xl text-sm">
+                <div className="text-xs text-blue-500 font-semibold mb-2 uppercase tracking-wider">Статус: {orderStatus}</div>
+                <div className="whitespace-pre-wrap text-[var(--text-2)]">{explanation}</div>
               </div>
             )}
 
@@ -107,7 +107,7 @@ export function OrderAssistant({ orderId, orderNumber, orderStatus }: OrderAssis
                 <div className={`max-w-[85%] p-3 rounded-xl text-sm ${
                   msg.role === 'user'
                     ? 'bg-blue-600 text-white rounded-br-none'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-none'
+                    : 'bg-[var(--bg-card2)] text-[var(--text-2)] rounded-bl-none'
                 }`}>
                   {msg.content}
                 </div>
@@ -115,15 +115,15 @@ export function OrderAssistant({ orderId, orderNumber, orderStatus }: OrderAssis
             ))}
           </div>
 
-          <div className="p-3 border-t dark:border-slate-700">
+          <div className="p-3 border-t border-[var(--border)]">
             <div className="relative">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Спросить о заказе..."
-                className="w-full p-3 pr-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
+                placeholder="Запитати про замовлення..."
+                className="w-full p-3 pr-12 bg-[var(--bg-card2)] border border-[var(--border)] rounded-xl text-sm focus:ring-2 focus:ring-blue-500/50 outline-none"
                 disabled={loading}
               />
               <button

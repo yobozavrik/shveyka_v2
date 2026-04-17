@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, CheckCircle, Edit3, FileText, Layers, Loader2, Package, Plus, RefreshCw, ShoppingBag, Trash2, Play, XCircle } from 'lucide-react';
 import { OrderWorkflowPanel } from '@/components/orders/OrderWorkflowPanel';
+import { detectSizeType, extractSelectedSizes, getSizesByType } from '@/lib/sizeVariants';
 
 type OrderLine = {
   id: number;
@@ -116,14 +117,9 @@ const PRIORITY_COLOR: Record<string, string> = {
   urgent: 'text-red-600 font-semibold',
 };
 
-const CHILD_SIZES = ['86', '92', '98', '104', '110', '116', '122', '128', '134', '140', '146', '152', '158', '164', '170', '176'];
-const ADULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'];
-
-function getSizeSet(modelName?: string | null) {
-  const name = (modelName || '').toLowerCase();
-  if (name.includes('дитя')) return CHILD_SIZES;
-  if (name.includes('чолов') || name.includes('жін')) return ADULT_SIZES;
-  return ADULT_SIZES;
+function getSizeSet(modelName?: string | null): readonly string[] {
+  if (!modelName) return getSizesByType('adult');
+  return getSizesByType(detectSizeType(modelName));
 }
 
 function parseFabricColors(value?: string | null) {
@@ -159,7 +155,7 @@ async function readJsonResponse<T>(res: Response): Promise<T | null> {
 
 export default function ProductionOrderDetailPage() {
   const params = useParams();
-  const orderId = params.id as string;
+  const orderId = params?.id as string;
 
   const [order, setOrder] = useState<ProductionOrder | null>(null);
   const [requirements, setRequirements] = useState<Requirements | null>(null);
@@ -170,7 +166,7 @@ export default function ProductionOrderDetailPage() {
   const [cancellingLaunch, setCancellingLaunch] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [creatingBatch, setCreatingBatch] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showLaunchConfirm, setShowLaunchConfirm] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<{ message: string; details?: any[] } | null>(null);
@@ -253,7 +249,7 @@ export default function ProductionOrderDetailPage() {
       const res = await fetch(`/api/production-orders/${orderId}/approve`, { method: 'POST' });
       if (!res.ok) {
         const d = await readJsonResponse<{ error?: string }>(res);
-        throw new Error(d.error || 'Помилка затвердження');
+        throw new Error(d?.error || 'Помилка затвердження');
       }
       await fetchOrder();
       await fetchRequirements();
@@ -276,9 +272,9 @@ export default function ProductionOrderDetailPage() {
       const data = await readJsonResponse<{ error?: string; pending_batches?: any[]; shortage_details?: any[] }>(res);
       if (!res.ok) {
         if (action === 'launch' || action === 'cancel-launch') {
-          setLaunchError({ message: data.error || 'Помилка запуску', details: data.pending_batches || data.shortage_details });
+          setLaunchError({ message: data?.error || 'Помилка запуску', details: data?.pending_batches || data?.shortage_details });
         } else {
-          throw new Error(data.error || 'Помилка операції');
+          throw new Error(data?.error || 'Помилка операції');
         }
       } else {
         if (action === 'launch') setLaunchSuccess(true);
@@ -331,6 +327,10 @@ export default function ProductionOrderDetailPage() {
 
   const openBatchModal = () => {
     const firstLine = order?.lines?.[0] || null;
+    // Автоматически определяем размеры по названию модели
+    const modelName = firstLine?.model_name || null;
+    const defaultSizes = getSizeSet(modelName);
+
     setEditingBatchId(null);
     setBatchDraft({
       model_id: firstLine?.model_id ? String(firstLine.model_id) : '',
@@ -340,7 +340,7 @@ export default function ProductionOrderDetailPage() {
       fabric_rolls_input: '1',
       fabric_colors: [],
       notes: '',
-      selected_sizes: [],
+      selected_sizes: [...defaultSizes], // Сразу выбираем все размеры нужного типа
     });
     setBatchError(null);
     setShowBatchModal(true);
@@ -381,22 +381,36 @@ export default function ProductionOrderDetailPage() {
       const selectedLine = order.lines.find((line) => String(line.model_id ?? line.id) === batchDraft.model_id);
       if (!selectedLine || !selectedLine.model_id) throw new Error('Оберіть позицію замовлення');
 
+      // --- ВАЛІДАЦІЯ ОБОВ'ЯЗКОВИХ ПОЛІВ ---
+      if (!batchDraft.fabric_type?.trim()) {
+        throw new Error("Поле 'Тип тканини' є обов'язковим");
+      }
+      
       const fabricColors = batchDraft.fabric_colors
         .map((item) => ({ color: String(item.color || '').trim(), rolls: Number(item.rolls) }))
         .filter((item) => item.color && Number.isFinite(item.rolls) && item.rolls > 0);
+      
+      if (fabricColors.length === 0) {
+        throw new Error("Вкажіть хоча б один колір тканини та кількість рулонів");
+      }
+
+      const selectedSizes = batchDraft.selected_sizes.filter(Boolean);
+      if (selectedSizes.length === 0) {
+        throw new Error("Оберіть хоча б один розмір для партії");
+      }
 
       const payload = {
         product_model_id: selectedLine.model_id,
         quantity: editingBatchId ? selectedLine.quantity : (batchQuantity > 0 ? batchQuantity : Number(selectedLine.quantity || 0)),
         status: 'created',
         sku: selectedLine.model_sku || null,
-        fabric_type: batchDraft.fabric_type || null,
+        fabric_type: batchDraft.fabric_type,
         fabric_color: fabricColors.map((item) => `${item.color} (${item.rolls})`).join(', '),
         planned_start_date: batchDraft.planned_start_date || null,
         planned_end_date: order.planned_completion_date || null,
         notes: batchDraft.notes || null,
         is_urgent: order.priority === 'urgent',
-        size_variants: { selected_sizes: batchDraft.selected_sizes.filter(Boolean) },
+        size_variants: { selected_sizes: selectedSizes },
       };
 
       const res = await fetch(editingBatchId ? `/api/batches/${editingBatchId}` : `/api/production-orders/${orderId}/batches`, {
@@ -494,7 +508,7 @@ export default function ProductionOrderDetailPage() {
               </button>
             )}
             {order.status === 'approved' && (
-              <button onClick={() => setShowConfirm(true)} disabled={launching || !canLaunch} title={!canLaunch ? 'Запуск доступний тільки після затвердження' : undefined} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${canLaunch ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+              <button onClick={() => setShowLaunchConfirm(true)} disabled={launching || !canLaunch} title={!canLaunch ? 'Запуск доступний тільки після затвердження' : undefined} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${canLaunch ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
                 {launching ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />} Запустити у виробництво
               </button>
             )}
@@ -702,14 +716,14 @@ export default function ProductionOrderDetailPage() {
           </table>
         )}
       </div>
-      {showConfirm && (
+      {showLaunchConfirm && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6">
             <h3 className="text-lg font-semibold text-gray-900">Запустити замовлення?</h3>
             <p className="text-sm text-gray-500 mt-2">Це переведе замовлення у виробництво і створить партії на основі доступних позицій.</p>
             <div className="mt-6 flex items-center justify-end gap-3">
-              <button onClick={() => setShowConfirm(false)} className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Скасувати</button>
-              <button onClick={async () => { setShowConfirm(false); await handleOrderAction('launch'); }} className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700">Підтвердити запуск</button>
+              <button onClick={() => setShowLaunchConfirm(false)} className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Скасувати</button>
+              <button onClick={async () => { setShowLaunchConfirm(false); await handleOrderAction('launch'); }} className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700">Підтвердити запуск</button>
             </div>
           </div>
         </div>
@@ -729,7 +743,12 @@ export default function ProductionOrderDetailPage() {
                 <span className="block text-xs font-medium text-gray-500 mb-1">Позиція</span>
                 <select
                   value={batchDraft.model_id}
-                  onChange={(e) => setBatchDraft((d) => ({ ...d, model_id: e.target.value }))}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const line = order.lines.find(l => String(l.model_id ?? l.id) === val);
+                    const sizes = line ? getSizeSet(line.model_name) : [];
+                    setBatchDraft((d) => ({ ...d, model_id: val, selected_sizes: [...sizes] }));
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 >
                   <option value="">Оберіть позицію</option>

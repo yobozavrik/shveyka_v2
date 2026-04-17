@@ -48,7 +48,7 @@ export default function PayrollPage() {
           <p className="text-[var(--text-2)]">Нарахування за відрядною формою оплати</p>
         </div>
         <div className="flex gap-3">
-          <button className="bg-[var(--bg-card)] hover:bg-black/8 dark:hover:bg-white/8 text-[var(--text-1)] px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
+          <button className="bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] text-[var(--text-1)] px-4 py-2 rounded-lg flex items-center gap-2 transition-all">
             <Download className="h-4 w-4" />
             Експорт XLS
           </button>
@@ -87,7 +87,7 @@ export default function PayrollPage() {
          <div className="lg:col-span-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
                <table className="w-full text-left text-sm">
-                  <thead className="bg-black/5 dark:bg-white/5 text-[var(--text-2)] font-medium">
+                  <thead className="bg-[var(--bg-card2)] text-[var(--text-2)] font-medium">
                      <tr>
                         <th className="px-6 py-4">Співробітник</th>
                         <th className="px-6 py-4 text-center">Записів</th>
@@ -112,7 +112,7 @@ export default function PayrollPage() {
                         <>
                            <tr 
                               key={row.id} 
-                              className={`hover:bg-black/5 dark:bg-white/5 transition-colors cursor-pointer ${expandedId === row.id ? 'bg-black/5 dark:bg-white/5' : ''}`}
+                              className={`hover:bg-[var(--bg-hover)] transition-colors cursor-pointer ${expandedId === row.id ? 'bg-[var(--bg-card2)]' : ''}`}
                               onClick={() => setExpandedId(expandedId === row.id ? null : row.id)}
                            >
                               <td className="px-6 py-4 font-bold">{row.full_name}</td>

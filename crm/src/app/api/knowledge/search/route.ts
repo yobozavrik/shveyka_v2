@@ -1,15 +1,14 @@
-import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
     
-    const { query, domain, limit = 5 } = await request.json();
+    const { query, limit = 5 } = await request.json();
     
-    if (!query) {
-      return NextResponse.json({ error: 'Query required' }, { status: 400 });
-    }
+    if (!query) return ApiResponse.error('Query required', ERROR_CODES.BAD_REQUEST, 400);
     
     const { data: chunks, error } = await supabase
       .from('knowledge_chunks')
@@ -17,9 +16,7 @@ export async function POST(request: Request) {
       .textSearch('content', query)
       .limit(limit);
     
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
     
     const results = await Promise.all(
       (chunks || []).map(async (chunk) => {
@@ -38,9 +35,8 @@ export async function POST(request: Request) {
       })
     );
     
-    return NextResponse.json({ results, count: results.length });
+    return ApiResponse.success({ results, count: results.length });
   } catch (error: any) {
-    console.error('Knowledge search error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return ApiResponse.handle(error, 'knowledge_search_post');
   }
 }

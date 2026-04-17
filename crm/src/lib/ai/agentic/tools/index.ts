@@ -1,4 +1,5 @@
-export { ToolRegistry, Tool, ToolResult, Citation } from './ToolRegistry';
+export { ToolRegistry } from './ToolRegistry';
+export type { Tool, ToolResult, Citation } from './ToolRegistry';
 export { orderTools } from './OrderTools';
 export { payrollTools } from './PayrollTools';
 export { knowledgeTools } from './KnowledgeTools';

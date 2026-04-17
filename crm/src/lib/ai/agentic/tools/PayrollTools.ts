@@ -56,8 +56,8 @@ export const payrollTools: Tool[] = [
       const supabase = await createClient();
       
       const { data: entry } = await supabase
-        .from('operation_entries')
-        .select('id, quantity, confirmed_quantity, status, employee_id, operation_id')
+        .from('task_entries')
+        .select('id, quantity, status, employee_id, operation_id')
         .eq('id', params.entry_id)
         .single();
       
@@ -68,7 +68,7 @@ export const payrollTools: Tool[] = [
         .single();
       
       const calculation = accrual
-        ? `${accrual.piece_rate_amount} грн × ${entry?.confirmed_quantity} шт = ${accrual.total_amount} грн`
+        ? `${accrual.piece_rate_amount} грн × ${entry?.quantity} шт = ${accrual.total_amount} грн`
         : 'Начисление не найдено';
       
       return {
@@ -77,7 +77,6 @@ export const payrollTools: Tool[] = [
           entry_id: params.entry_id,
           entry_status: entry?.status,
           quantity: entry?.quantity,
-          confirmed_quantity: entry?.confirmed_quantity,
           rate: accrual?.piece_rate_amount,
           amount: accrual?.total_amount,
           calculation
@@ -96,16 +95,16 @@ export const payrollTools: Tool[] = [
       
       const { data: period } = await supabase
         .from('payroll_periods')
-        .select('date_from, date_to')
+        .select('period_start, period_end')
         .eq('id', params.period_id)
         .single();
       
       const { data: entries } = await supabase
-        .from('operation_entries')
-        .select('id, employee_id, quantity, confirmed_quantity, status, created_at')
-        .eq('status', 'confirmed')
-        .gte('created_at', period?.date_from)
-        .lte('created_at', period?.date_to);
+        .from('task_entries')
+        .select('id, employee_id, quantity, status, recorded_at')
+        .eq('status', 'approved')
+        .gte('recorded_at', period?.period_start)
+        .lte('recorded_at', period?.period_end);
       
       const entryIds = entries?.map(e => e.id) || [];
       
@@ -121,7 +120,7 @@ export const payrollTools: Tool[] = [
       return {
         success: true,
         data: {
-          total_confirmed: entries?.length || 0,
+          total_approved: entries?.length || 0,
           with_accruals: accruals?.length || 0,
           pending_count: pending.length,
           pending_entries: pending.map(e => ({ id: e.id, employee_id: e.employee_id }))

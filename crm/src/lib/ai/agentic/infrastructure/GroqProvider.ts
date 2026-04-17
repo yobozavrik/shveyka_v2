@@ -11,7 +11,7 @@ export class GroqProvider implements AIProvider {
     this.model = 'llama-3.3-70b-versatile';
     
     if (!this.apiKey) {
-      console.warn('GROQ_API_KEY missing in environment');
+      throw new Error('GROQ_API_KEY is required but not configured in environment variables');
     }
   }
 
@@ -43,7 +43,7 @@ export class GroqProvider implements AIProvider {
       return response.data.choices[0].message.content || '';
     } catch (error: any) {
       console.error('Groq AI Error:', error.response?.data || error.message);
-      throw new Error(`Groq fail: ${error.message}`);
+      throw new Error(`Groq API error: ${error.message}`);
     }
   }
 }

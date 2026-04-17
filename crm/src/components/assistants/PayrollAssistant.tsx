@@ -71,40 +71,40 @@ export function PayrollAssistant({ employeeId, employeeName, periodId, periodNam
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-3 py-2 text-sm bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors"
-        title="Объяснить расчет зарплаты"
+        className="flex items-center gap-2 px-3 py-2 text-sm bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 rounded-lg transition-colors"
+        title="Пояснити розрахунок зарплати"
       >
         <DollarSign size={16} />
-        <span>Объяснить</span>
+        <span>Пояснити</span>
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-4 right-4 w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl z-50 border border-slate-200 dark:border-slate-700 flex flex-col max-h-[70vh]">
-          <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center bg-green-50 dark:bg-green-900/20 rounded-t-2xl">
+        <div className="fixed bottom-4 right-4 w-96 bg-[var(--bg-card)] rounded-2xl shadow-2xl z-50 border border-[var(--border)] flex flex-col max-h-[70vh]">
+          <div className="p-4 border-b border-[var(--border)] flex justify-between items-center bg-emerald-500/10 rounded-t-2xl">
             <div className="flex items-center gap-2">
-              <DollarSign size={18} className="text-green-600" />
+              <DollarSign size={18} className="text-emerald-500" />
               <div>
-                <h3 className="font-semibold text-sm text-slate-800 dark:text-white">
-                  {employeeName || 'Расчет зарплаты'}
+                <h3 className="font-semibold text-sm text-[var(--text-1)]">
+                  {employeeName || 'Розрахунок зарплати'}
                 </h3>
-                <span className="text-xs text-slate-500">{periodName || 'Текущий период'}</span>
+                <span className="text-xs text-[var(--text-3)]">{periodName || 'Поточний період'}</span>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-[var(--bg-hover)] rounded-lg">
               <X size={16} />
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {loading && !explanation ? (
-              <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+              <div className="flex items-center justify-center py-8 gap-2 text-[var(--text-3)]">
                 <Loader2 size={20} className="animate-spin" />
-                <span className="text-sm">Анализирую расчет...</span>
+                <span className="text-sm">Аналізую розрахунок...</span>
               </div>
             ) : (
-              <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm">
-                <div className="text-xs text-green-600 font-semibold mb-2 uppercase tracking-wider">Структура оплаты</div>
-                <div className="whitespace-pre-wrap text-slate-600 dark:text-slate-300">{explanation}</div>
+              <div className="p-3 bg-[var(--bg-card2)] rounded-xl text-sm">
+                <div className="text-xs text-emerald-500 font-semibold mb-2 uppercase tracking-wider">Структура оплати</div>
+                <div className="whitespace-pre-wrap text-[var(--text-2)]">{explanation}</div>
               </div>
             )}
 
@@ -112,8 +112,8 @@ export function PayrollAssistant({ employeeId, employeeName, periodId, periodNam
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] p-3 rounded-xl text-sm ${
                   msg.role === 'user'
-                    ? 'bg-green-600 text-white rounded-br-none'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-bl-none'
+                    ? 'bg-emerald-600 text-white rounded-br-none'
+                    : 'bg-[var(--bg-card2)] text-[var(--text-2)] rounded-bl-none'
                 }`}>
                   {msg.content}
                 </div>
@@ -121,21 +121,21 @@ export function PayrollAssistant({ employeeId, employeeName, periodId, periodNam
             ))}
           </div>
 
-          <div className="p-3 border-t dark:border-slate-700">
+          <div className="p-3 border-t border-[var(--border)]">
             <div className="relative">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Спросить о зарплате..."
-                className="w-full p-3 pr-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-green-500/50 outline-none"
+                placeholder="Запитати про зарплату..."
+                className="w-full p-3 pr-12 bg-[var(--bg-card2)] border border-[var(--border)] rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none"
                 disabled={loading}
               />
               <button
                 onClick={handleSend}
                 disabled={loading || !input.trim()}
-                className="absolute right-2 top-2 p-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="absolute right-2 top-2 p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
               >
                 <Send size={16} />
               </button>

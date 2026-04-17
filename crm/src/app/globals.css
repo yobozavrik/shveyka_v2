@@ -2,80 +2,159 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg-base:    #fafafa;
-  --bg-card:    #ffffff;
-  --bg-card2:   #f8fafc;
-  --bg-sidebar: #ffffff;
-  --border:     #e2e8f0;
-  --text-1:     #020617;
-  --text-2:     #64748b;
-  --text-3:     #94a3b8;
-  --primary:    #4f46e5;
-  --ring:       rgba(79, 70, 229, 0.1);
-  --shadow:     0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-}
+/*
+ * Design System — Linear Inspired
+ * https://getdesign.md/linear.app/design-md
+ */
 
+/* ── Dark Mode (default) ── */
+:root,
 .dark {
-  --bg-base:    #020617; /* Slate-950 */
-  --bg-card:    #0f172a; /* Slate-900 */
-  --bg-card2:   #1e293b; /* Slate-800 */
-  --bg-sidebar: #0f172a;
-  --border:     #1e293b;
-  --text-1:     #f8fafc;
-  --text-2:     #94a3b8;
-  --text-3:     #64748b;
-  --primary:    #6366f1; /* Indigo-500 */
-  --ring:       rgba(99, 102, 241, 0.1);
-  --shadow:     0 1px 3px 0 rgb(0 0 0 / 0.4);
-  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.5);
+  /* Background Surfaces */
+  --bg-base:      #08090a;  /* Marketing Black — deepest canvas */
+  --bg-card:      #0f1011;  /* Panel Dark — sidebar, panels */
+  --bg-card2:     #191a1b;  /* Level 3 — elevated surfaces */
+  --bg-sidebar:   #0f1011;
+  --bg-hover:     #28282c;  /* Secondary surface — hover states */
+
+  /* Text & Content */
+  --text-1:       #f7f8f8;  /* Primary — near-white, not pure white */
+  --text-2:       #d0d6e0;  /* Secondary — cool silver-gray */
+  --text-3:       #8a8f98;  /* Tertiary — muted, metadata */
+  --text-4:       #62666d;  /* Quaternary — disabled, timestamps */
+
+  /* Brand & Accent */
+  --primary:      #5e6ad2;  /* Brand Indigo — CTA backgrounds */
+  --accent:       #7170ff;  /* Accent Violet — interactive elements */
+  --accent-hover: #828fff;  /* Accent Hover */
+  --ring:         rgba(94, 106, 210, 0.4);
+
+  /* Borders — semi-transparent white */
+  --border:       rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-solid: #23252a;
+  --border-solid2: #34343a;
+  --line-tint:    #141516;
+
+  /* Status */
+  --success:      #27a644;
+  --success-em:   #10b981;
+
+  /* Shadows — Linear multi-layer */
+  --shadow-sm:    0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow:       0 2px 4px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-lg:    0 8px 24px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.1);
+  --shadow-xl:    0 0 0 1px rgba(255, 255, 255, 0.05),
+                  0 1px 1px rgba(0, 0, 0, 0.04),
+                  0 3px 3px rgba(0, 0, 0, 0.06),
+                  0 5px 5px rgba(0, 0, 0, 0.07),
+                  0 8px 8px rgba(0, 0, 0, 0.08);
+  --shadow-inset: inset 0 0 12px rgba(0, 0, 0, 0.2);
+  --focus-ring:   0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-/* Поддержка Light/Dark через переменные */
+/* ── Light Mode ── */
+.light {
+  /* Background Surfaces */
+  --bg-base:      #f7f8f8;  /* Light background */
+  --bg-card:      #ffffff;  /* Pure white cards */
+  --bg-card2:     #f3f4f5;  /* Subtle surface tint */
+  --bg-sidebar:   #ffffff;
+  --bg-hover:     #e6e6e6;
+
+  /* Text & Content */
+  --text-1:       #08090a;  /* Near-black */
+  --text-2:       #4b5563;  /* Muted gray */
+  --text-3:       #6b7280;  /* Tertiary gray */
+  --text-4:       #9ca3af;  /* Quaternary */
+
+  /* Brand & Accent */
+  --primary:      #5e6ad2;  /* Brand Indigo */
+  --accent:       #7170ff;  /* Accent Violet */
+  --accent-hover: #4f46e5;  /* Darker on hover in light mode */
+  --ring:         rgba(94, 106, 210, 0.2);
+
+  /* Borders — solid in light mode */
+  --border:       #d0d6e0;
+  --border-subtle: #e6e6e6;
+  --border-solid: #d0d6e0;
+  --border-solid2: #c0c5cc;
+  --line-tint:    #e6e6e6;
+
+  /* Status */
+  --success:      #16a34a;
+  --success-em:   #10b981;
+
+  /* Shadows for light mode */
+  --shadow-sm:    0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow:       0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-lg:    0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl:    0 20px 25px rgba(0, 0, 0, 0.1), 0 8px 10px rgba(0, 0, 0, 0.05);
+  --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  --focus-ring:   0 0 0 3px rgba(94, 106, 210, 0.15);
+}
+
+/* ── Global Styles ── */
 body {
   background: var(--bg-base);
   color: var(--text-1);
-  font-family: var(--font-fira-sans), system-ui, sans-serif;
+  font-family: var(--font-fira-sans), 'Inter Variable', 'SF Pro Display', -apple-system, system-ui, sans-serif;
+  font-feature-settings: 'cv01', 'ss03';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .font-mono, [class*="font-mono"] {
-  font-family: var(--font-fira-code), monospace;
+  font-family: var(--font-fira-code), 'Berkeley Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-* { border-color: var(--border); }
+/* Universal border — scoped to common borderable elements only */
+input, select, textarea, button, hr, fieldset, legend,
+table, th, td, thead, tbody, tfoot, tr,
+ul, ol, li, dl, dt, dd {
+  border-color: var(--border);
+}
 
+/* Labels — uppercase, small, muted */
 label {
-  color: var(--text-2);
+  color: var(--text-3);
   font-weight: 500;
   font-size: 0.75rem;
   letter-spacing: 0.025em;
   text-transform: uppercase;
 }
 
+/* Inputs — Linear style */
 input, select, textarea {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-2);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.625rem 1rem;
+  border-radius: 6px;
+  padding: 8px 14px;
   font-size: 0.875rem;
-  transition: all 0.2s;
+  font-family: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.light input, .light select, .light textarea {
   background: var(--bg-card);
+  color: var(--text-1);
+  border-color: var(--border-solid);
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px var(--ring);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 ::selection {
   background: var(--ring);
-  color: var(--primary);
+  color: var(--accent);
 }
 
+/* Scrollbar — thin, subtle */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }

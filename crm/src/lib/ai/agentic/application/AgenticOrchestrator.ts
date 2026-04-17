@@ -1,10 +1,16 @@
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 import { SupabaseRepository } from '../infrastructure/SupabaseRepository';
 import { AIProvider } from '../infrastructure/AIProvider';
 import { AIProviderFactory } from '../infrastructure/AIProviderFactory';
 import { KnowledgeRepository } from '../../knowledge/KnowledgeRepository';
 import { KnowledgeTools } from '../infrastructure/KnowledgeTools';
+
+const ToolCallSchema = z.object({
+  tool: z.string(),
+  params: z.record(z.string(), z.any())
+});
 
 export class AgenticOrchestrator {
   private repo: SupabaseRepository;
@@ -32,7 +38,7 @@ export class AgenticOrchestrator {
       const filePath = path.join(process.cwd(), 'src/lib/ai/agentic/domain', fileName);
       return fs.readFileSync(filePath, 'utf-8');
     } catch (error) {
-      console.error(`Ошибка чтения навыка ${fileName}:`, error);
+      console.error(`Error reading skill file ${fileName}:`, error);
       return "";
     }
   }
@@ -51,24 +57,24 @@ export class AgenticOrchestrator {
     };
 
     const prompt = `
-      ТЫ: Профессиональный AI-ассистент системы "Швейка".
-      ТВОЯ ЗАДАЧА: Проанализировать данные производства и дать инсайты в формате UX 3-30-300.
+      You are an AI assistant for the "Shveyka" manufacturing system.
+      Your goal is to identify and explain production anomalies based on KPI metrics and UX guidelines 3-30-300.
 
-      БИЗНЕС-ПРАВИЛА (GROUND TRUTH):
+      GROUND TRUTH:
       ${productionRules}
 
-      ПРАВИЛА ВИЗУАЛИЗАЦИИ:
+      UX Guidelines:
       ${uxGuidelines}
 
-      АКТУАЛЬНЫЕ ДАННЫЕ ИЗ БАЗЫ:
+      Current data:
       ${JSON.stringify(context, null, 2)}
 
-      ИНСТРУКЦИЯ:
-      1. Сначала выведи Зону 3 (KPI) — кратко.
-      2. Затем Зону 30 (Аналитика) — 1-2 предложения.
-      3. Затем Зону 300 (Действие) — список рекомендаций.
+      Tasks:
+      1. Identify the top 3 KPI anomalies
+      2. Identify 1-2 UX friction points
+      3. Provide specific recommendations for improvement
       
-      Генерируй ответ строго на РУССКОМ языке.
+      Respond concisely and clearly.
     `;
 
     return await this.getAi().generateResponse(prompt);
@@ -87,16 +93,16 @@ export class AgenticOrchestrator {
       : '';
 
     const prompt = `
-      ТЫ: AI-ассистент системы "Швейка". Отвечай на вопросы пользователя.
+      You are an AI assistant for "Shveyka". Answer user questions about production clearly.
 
-      БИЗНЕС-ПРАВИЛА:
+      Ground truth:
       ${productionRules}
 
-      ${knowledgeContext ? `РЕЛЕВАНТНЫЕ ЗНАНИЯ ИЗ БАЗЫ:\n${knowledgeContext}` : ''}
+      ${knowledgeContext ? `Relevant knowledge base data:\n${knowledgeContext}` : ''}
 
-      Вопрос пользователя: ${message}
+      User question: ${message}
 
-      Отвечай кратко и по существу на русском языке.
+      Answer clearly and helpfully.
     `;
 
     return await this.getAi().generateResponse(prompt, history);
@@ -106,40 +112,62 @@ export class AgenticOrchestrator {
     const toolDescriptions = this.tools.getToolDescriptions();
     
     const systemPrompt = `
-      ТЫ: AI-ассистент с доступом к инструментам системы "Швейка".
+      You are an AI assistant with agentic capabilities for "Shveyka".
       
-      ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
+      Available tools:
       ${toolDescriptions}
 
-      ПРАВИЛА:
-      1. Если вопрос требует данных из базы - используй инструменты
-      2. Если вопрос о процессах - ищи в knowledge base
-      3. Всегда отвечай на русском языке
-      4. Будь краток и информативен
+      Instructions:
+      1. First check if you need additional data: if yes - execute a tool call
+      2. Then search for relevant info in knowledge base
+      3. Formulate a clear response
+      4. Add citations to sources
 
-      Для вызова инструмента используй JSON формат:
-      {"tool": "название_инструмента", "params": {...параметры}}
+      To call a tool, return JSON format:
+      {"tool": "tool_name", "params": {...parameters}}
     `;
 
-    const fullPrompt = `${systemPrompt}\n\nВопрос: ${message}`;
+    const fullPrompt = `${systemPrompt}\n\nUser: ${message}`;
     const response = await this.getAi().generateResponse(fullPrompt, history);
 
     const toolCallMatch = response.match(/\{"tool":\s*"([^"]+)",\s*"params":\s*(\{[^}]+\})\}/);
     
-    if (toolCallMatch) {
+if (toolCallMatch) {
+    try {
       const toolName = toolCallMatch[1];
-      const params = JSON.parse(toolCallMatch[2]);
-      
-      const toolResult = await this.tools.executeTool(toolName, params);
-      
-      if (toolResult.success) {
-        const resultPrompt = `
-          Результат выполнения инструмента ${toolName}:
-          ${JSON.stringify(toolResult.data, null, 2)}
+      const paramsJson = toolCallMatch[2];
 
-          Сформулируй ответ пользователю на основе этих данных.
-        `;
-        return await this.getAi().generateResponse(resultPrompt, history);
+      let params: Record<string, any>;
+      try {
+        params = JSON.parse(paramsJson);
+      } catch (jsonError) {
+        console.error('Failed to parse tool params JSON:', jsonError);
+        return `Ошибка парсинга параметров инструмента: получен некорректный JSON`;
+      }
+
+      const parseResult = ToolCallSchema.safeParse({ tool: toolName, params });
+
+      if (!parseResult.success) {
+        console.error('Invalid tool call format:', parseResult.error);
+        return `Некорректный формат вызова инструмента: ${parseResult.error.message}`;
+      }
+
+const validatedParams = parseResult.data.params;
+
+    const toolResult = await this.tools.executeTool(toolName, validatedParams);
+        
+        if (toolResult.success) {
+          const resultPrompt = `
+            Tool ${toolName} execution result:
+            ${JSON.stringify(toolResult.data, null, 2)}
+
+            Based on this data, provide a clear and helpful answer to the user.
+          `;
+          return await this.getAi().generateResponse(resultPrompt, history);
+        }
+      } catch (parseError) {
+        console.error('Failed to parse tool call:', parseError);
+        return response;
       }
     }
 
@@ -150,25 +178,25 @@ export class AgenticOrchestrator {
     const orderResult = await this.tools.executeTool('get_order_info', { orderId });
     
     if (!orderResult.success) {
-      return `Не удалось найти заказ #${orderId}`;
+      return `Could not find order #${orderId}`;
     }
 
     const order = orderResult.data;
-    const knowledgeResults = await this.knowledgeRepo.searchKnowledge(`статус заказа ${order.status}`, 2);
+    const knowledgeResults = await this.knowledgeRepo.searchKnowledge(`order status ${order.status}`, 2);
     
     const knowledgeContext = knowledgeResults.length > 0
       ? knowledgeResults.map(r => r.content).join('\n\n')
       : '';
 
     const prompt = `
-      Объясни пользователю статус заказа в понятных терминах.
+      Explain order status in simple terms for workers.
 
-      ДАННЫЕ ЗАКАЗА:
+      Order data:
       ${JSON.stringify(order, null, 2)}
 
-      ${knowledgeContext ? `КОНТЕКСТ СТАТУСА:\n${knowledgeContext}` : ''}
+      ${knowledgeContext ? `Additional context:\n${knowledgeContext}` : ''}
 
-      Ответ должен быть кратким и информативным на русском языке.
+      Provide a concise and simple explanation for non-technical users.
     `;
 
     return await this.getAi().generateResponse(prompt);
@@ -178,25 +206,25 @@ export class AgenticOrchestrator {
     const payrollResult = await this.tools.executeTool('get_payroll_info', { employeeId, periodId });
     
     if (!payrollResult.success) {
-      return 'Не удалось получить данные о зарплате';
+      return 'Could not find payroll data for the specified parameters';
     }
 
     const payroll = payrollResult.data;
-    const knowledgeResults = await this.knowledgeRepo.searchKnowledge('расчет зарплаты премиальная часть', 2);
+    const knowledgeResults = await this.knowledgeRepo.searchKnowledge('payroll calculation formula components', 2);
     
     const knowledgeContext = knowledgeResults.length > 0
       ? knowledgeResults.map(r => r.content).join('\n\n')
       : '';
 
     const prompt = `
-      Объясни пользователю расчет зарплаты.
+      Explain payroll calculation.
 
-      ДАННЫЕ О ЗАРПЛАТЕ:
+      Payroll data:
       ${JSON.stringify(payroll, null, 2)}
 
-      ${knowledgeContext ? `ПРАВИЛА РАСЧЕТА:\n${knowledgeContext}` : ''}
+      ${knowledgeContext ? `Additional formulas:\n${knowledgeContext}` : ''}
 
-      Ответ должен быть кратким и информативным на русском языке.
+      Provide a concise and simple explanation for non-technical users.
     `;
 
     return await this.getAi().generateResponse(prompt);
@@ -206,7 +234,7 @@ export class AgenticOrchestrator {
     const sopResult = await this.tools.executeTool('get_sop', { name: sopName });
     
     if (!sopResult.success) {
-      return `SOP "${sopName}" не найден`;
+      return `SOP "${sopName}" not found`;
     }
 
     return sopResult.data.content;

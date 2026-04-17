@@ -66,8 +66,8 @@ export default function LocationsPage() {
            <div className="bg-sky-500/10 border border-sky-500/20 p-4 rounded-2xl mb-6 flex items-start gap-4">
                <Info className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
                <div>
-                  <h4 className="text-sm font-bold text-sky-800 dark:text-sky-400 mb-1">Віртуальні та Фізичні зони</h4>
-                  <p className="text-xs text-sky-700/80 dark:text-sky-300/80 leading-relaxed font-medium">Складський облік Odoo вимагає, щоб будь-який рух фіксувався. Закупівля сировини – це рух з "Постачальник" на "Внутрішній склад". Передача в цех – рух з "Внутрішній склад" на "Цех (НЗП)". Тому ви бачите тут не лише фізичні склади, але й транзитні зони.</p>
+                  <h4 className="text-sm font-bold text-sky-500 mb-1">Віртуальні та Фізичні зони</h4>
+                  <p className="text-xs text-sky-500/80 leading-relaxed font-medium">Складський облік Odoo вимагає, щоб будь-який рух фіксувався. Закупівля сировини – це рух з "Постачальник" на "Внутрішній склад". Передача в цех – рух з "Внутрішній склад" на "Цех (НЗП)". Тому ви бачите тут не лише фізичні склади, але й транзитні зони.</p>
                </div>
            </div>
 

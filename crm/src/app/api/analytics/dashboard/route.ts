@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { getAuth, requireAuth } from '@/lib/auth-server';
+import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return ApiResponse.error('Access denied', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const supabase = await createServerClient(true);
@@ -27,20 +28,21 @@ export async function GET(request: Request) {
 
     const dateFromStr = dateFrom.toISOString().slice(0, 10);
 
-    const [batchesRes, entriesRes, employeesRes, operationsRes, pendingRes] = await Promise.all([
+    const [batchesRes, entriesRes, employeesRes, operationsRes, stageOpsRes, pendingRes] = await Promise.all([
       supabase.from('production_batches')
         .select('id, status, quantity')
-        .in('status', ['created', 'cutting', 'sewing', 'ready']),
-      supabase.from('operation_entries')
-        .select('id, quantity, status, employee_id, operation_id, created_at')
-        .gte('entry_date', dateFromStr),
+        .in('status', ['created', 'cutting', 'sewing', 'overlock', 'straight_stitch', 'coverlock', 'packaging', 'ready']),
+      supabase.from('task_entries')
+        .select('id, quantity, status, employee_id, operation_id, recorded_at, created_at')
+        .gte('recorded_at', dateFromStr),
       supabase.from('employees')
         .select('id, full_name, position, department, payment_type')
         .eq('status', 'active'),
       supabase.from('operations')
-        .select('id, base_rate')
-        .in('operation_type', ['piecework', 'sewing', 'cutting', 'embroidery']),
-      supabase.from('operation_entries')
+        .select('id, code, base_rate'),
+      supabase.from('stage_operations')
+        .select('id, code'),
+      supabase.from('task_entries')
         .select('id')
         .eq('status', 'submitted'),
     ]);
@@ -49,33 +51,31 @@ export async function GET(request: Request) {
     const entries = Array.isArray(entriesRes.data) ? entriesRes.data : [];
     const employees = Array.isArray(employeesRes.data) ? employeesRes.data : [];
     const operations = Array.isArray(operationsRes.data) ? operationsRes.data : [];
+    const stageOps = Array.isArray(stageOpsRes.data) ? stageOpsRes.data : [];
     const pending = Array.isArray(pendingRes.data) ? pendingRes.data : [];
 
-    if (batchesRes.error || entriesRes.error || employeesRes.error || operationsRes.error || pendingRes.error) {
-      console.warn('Supabase analytics fallback:', {
-        batches: batchesRes.error?.message,
-        entries: entriesRes.error?.message,
-        employees: employeesRes.error?.message,
-        operations: operationsRes.error?.message,
-        pending: pendingRes.error?.message,
-      });
-    }
+    // Map stage_operation_id -> operation_code -> base_rate
+    const stageToRateMap: Record<number, number> = {};
+    const opMap: Record<string, number> = {};
+    operations.forEach((op: any) => { opMap[op.code] = op.base_rate || 0; });
+    stageOps.forEach((so: any) => { if (opMap[so.code]) stageToRateMap[so.id] = opMap[so.code]; });
 
     // Total output
-    type EntryRow = { id: number; quantity: number; status: string; employee_id: number; operation_id: number; created_at: string };
+    type EntryRow = { id: number; quantity: number; status: string; employee_id: number; operation_id: number; recorded_at: string; created_at: string };
     const allEntries = (entries as unknown as EntryRow[]);
-    const confirmedEntries = allEntries.filter(e => e.status === 'confirmed');
+    const confirmedEntries = allEntries.filter(e => e.status === 'approved');
     const totalQty = confirmedEntries.reduce((s, e) => s + (e.quantity || 0), 0);
     const totalEarnings = confirmedEntries.reduce((s, e) => {
-      const rate = operations.find((op: any) => op.id === e.operation_id)?.base_rate || 0;
+      const rate = stageToRateMap[e.operation_id] || 0;
       return s + rate * (e.quantity || 0);
     }, 0);
 
     // Daily breakdown
     const dailyMap: Record<string, { qty: number; count: number }> = {};
     for (const e of confirmedEntries) {
-      if (!e.created_at) continue;
-      const day = e.created_at.slice(0, 10);
+      const dateStr = e.recorded_at || e.created_at;
+      if (!dateStr) continue;
+      const day = dateStr.slice(0, 10);
       if (!dailyMap[day]) dailyMap[day] = { qty: 0, count: 0 };
       dailyMap[day].qty += e.quantity || 0;
       dailyMap[day].count += 1;
@@ -102,7 +102,7 @@ export async function GET(request: Request) {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10);
 
-    return NextResponse.json({
+    return ApiResponse.success({
       period,
       summary: {
         active_batches: batches.length,
@@ -121,21 +121,6 @@ export async function GET(request: Request) {
       }, {}),
     });
   } catch (e: any) {
-    console.error('Dashboard analytics exception:', e);
-    return NextResponse.json({
-      period: 'week',
-      summary: {
-        active_batches: 0,
-        total_batch_qty: 0,
-        active_employees: 0,
-        entries_count: 0,
-        confirmed_qty: 0,
-        total_earnings: 0,
-        pending_approvals: 0,
-      },
-      daily: [],
-      top_workers: [],
-      batches_by_status: {},
-    });
+    return ApiResponse.handle(e, 'analytics_dashboard');
   }
 }

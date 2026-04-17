@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: Shveyka AI Assistant API
+  version: 2.0.0
+  description: >
+    API інтелектуального помічника Shveyka MES.
+    Два режими: classic (прямий LLM запит) та agentic (з інструментами).
+servers:
+  - url: /api
+
+security:
+  - CookieAuth: []
+
+paths:
+  /ai/assistant:
+    get:
+      tags: [AI Assistant]
+      summary: Отримати оперативний аналіз (insights)
+      description: |
+        Аналізує поточний стан виробництва та генерує інсайти.
+        Повертає аналіз у форматі 3-30-300 (headline → summary → detail).
+        
+        **Reжим classic:** Прямий запит до LLM з контекстом виробництва.
+        **Режим agentic:** LLM використовує інструменти (Supabase query, knowledge search).
+      parameters:
+        - in: query
+          name: mode
+          schema:
+            type: string
+            enum: [classic, agentic]
+            default: classic
+          description: Режим роботи асистента
+        - in: query
+          name: action
+          schema: { type: string }
+          description: |
+            Дія: `explain-payroll`, `explain-order`, `explain-batch`.
+            Якщо вказано — додатковий контекст передається в промпт.
+        - in: query
+          name: orderId
+          schema: { type: integer }
+          description: ID замовлення для контексту
+        - in: query
+          name: employeeId
+          schema: { type: integer }
+          description: ID працівника для контексту зарплати
+        - in: query
+          name: periodId
+          schema: { type: integer }
+          description: ID періоду зарплати
+      responses:
+        '200':
+          description: Аналіз виробництва
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantResponse'
+        '401':
+          description: Не авторизований
+        '500':
+          description: Помилка Gemini або Supabase
+
+    post:
+      tags: [AI Assistant]
+      summary: Надіслати запит асистенту
+      description: |
+        Chat-запит до AI асистента. Підтримує історію діалогу.
+        
+        **Agentic mode** дозволяє LLM виконувати:
+        - `query_supabase` — SQL запит до БД
+        - `search_knowledge` — пошук в базі знань
+        - `explain_order` — аналіз замовлення
+        - `explain_payroll` — аналіз зарплати
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  description: Запитання користувача
+                history:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role: { type: string, enum: [user, model] }
+                      content: { type: string }
+                  description: Історія діалогу
+                context_type:
+                  type: string
+                  enum: [production, inventory, general]
+                  default: production
+                context:
+                  type: object
+                  description: Додатковий контекст (order_id, worker_id, тощо)
+                mode:
+                  type: string
+                  enum: [classic, agentic]
+                  default: classic
+                  description: Режим роботи
+      responses:
+        '200':
+          description: Відповідь асистента
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantChatResponse'
+
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: mes_auth_token
+
+  schemas:
+    AssistantResponse:
+      type: object
+      properties:
+        insights:
+          type: string
+          description: Текстовий аналіз у форматі 3-30-300
+        explanation:
+          type: string
+          nullable: true
+          description: Пояснення (для action=explain-*)
+        version:
+          type: string
+          example: "2.0.0-agentic"
+        mode:
+          type: string
+          enum: [classic, agentic]
+
+    AssistantChatResponse:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Текстова відповідь
+        answer:
+          type: string
+          description: Відповідь на запитання (alias для text)
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+          description: Джерела інформації
+        version:
+          type: string
+          example: "2.0.0-agentic"
+        mode:
+          type: string
+          enum: [classic, agentic]
+
+    Citation:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [document, table, api]
+          description: Тип джерела
+        source:
+          type: string
+          description: Назва джерела
+        title:
+          type: string
+          description: Заголовок
+        url:
+          type: string
+          nullable: true
+          description: URL (якщо є)
+        excerpt:
+          type: string
+          nullable: true
+          description: Уривок тексту

@@ -91,9 +91,9 @@ export default function AssistantSidebar() {
         <button
           onClick={() => setIsOpen(true)}
           className={`fixed bottom-6 right-6 p-4 text-white rounded-full shadow-2xl transition-all z-50 flex items-center gap-2 group ${
-            isAgentic 
-              ? 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-indigo-500/40 hover:scale-110 active:scale-95' 
-              : 'bg-slate-800 shadow-slate-500/40 hover:bg-slate-700'
+            isAgentic
+              ? 'bg-gradient-to-r from-violet-600 to-indigo-600 shadow-indigo-500/40 hover:scale-110 active:scale-95'
+              : 'bg-[var(--bg-card2)] shadow-[var(--text-3)]/20 hover:bg-[var(--bg-hover)]'
           }`}
         >
           <div className="relative">
@@ -108,39 +108,39 @@ export default function AssistantSidebar() {
 
       {/* Панель ассистента */}
       <div
-        className={`fixed top-0 right-0 h-full w-[400px] bg-white dark:bg-slate-900 shadow-2xl z-50 transform transition-transform duration-300 ${
+        className={`fixed top-0 right-0 h-full w-[400px] bg-[var(--bg-card)] shadow-2xl z-50 transform transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
-        } flex flex-col border-l dark:border-slate-800`}
+        } flex flex-col border-l border-[var(--border-subtle)]`}
       >
         {/* Шапка */}
-        <div className={`p-4 border-b dark:border-slate-800 flex justify-between items-center ${
-          isAgentic ? 'bg-indigo-50/80 dark:bg-indigo-900/20' : 'bg-slate-50 dark:bg-slate-800/50'
+        <div className={`p-4 border-b border-[var(--border-subtle)] flex justify-between items-center ${
+          isAgentic ? 'bg-[var(--primary)]/10' : 'bg-[var(--bg-card2)]'
         }`}>
           <div className="flex items-center gap-3">
-            <div className={`p-1.5 rounded-lg ${isAgentic ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-200 dark:bg-slate-700'}`}>
+            <div className={`p-1.5 rounded-lg ${isAgentic ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-[var(--bg-hover)]'}`}>
               <div className="relative">
-                <SewingIcon size={18} className={isAgentic ? 'text-white' : 'text-slate-800 dark:text-white'} />
+                <SewingIcon size={18} className={isAgentic ? 'text-white' : 'text-[var(--text-1)]'} />
                 {isAgentic && <Zap size={8} className="absolute -top-1 -right-1 fill-yellow-400 stroke-yellow-400" />}
               </div>
             </div>
             <div>
-              <h2 className="font-bold text-slate-800 dark:text-white text-sm leading-tight">Швейка AI Помічник</h2>
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+              <h2 className="font-bold text-[var(--text-1)] text-sm leading-tight">Швейка AI Помічник</h2>
+              <span className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-semibold">
                 {isAgentic ? 'Production Agent v2.0' : 'MES Assistant v1.0'}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button 
+            <button
               onClick={toggleMode}
               title={isAgentic ? "Вернуться к Classic" : "Попробовать Agentic"}
               className={`p-2 rounded-lg transition-all ${
-                isAgentic ? 'text-indigo-600 hover:bg-indigo-100' : 'text-slate-400 hover:bg-slate-100'
+                isAgentic ? 'text-indigo-600 hover:bg-indigo-100' : 'text-[var(--text-3)] hover:bg-[var(--bg-hover)]'
               }`}
             >
               <Settings2 size={18} />
             </button>
-            <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors">
+            <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-[var(--bg-hover)] rounded-lg transition-colors">
               <X size={18} />
             </button>
           </div>
@@ -150,36 +150,36 @@ export default function AssistantSidebar() {
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Блок Инсайтов (3-30-300) */}
           <div className={`p-5 rounded-2xl border transition-all ${
-            isAgentic 
-              ? 'bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/10 dark:to-slate-900 border-indigo-100 dark:border-indigo-900/30 shadow-sm' 
-              : 'bg-slate-50 dark:bg-slate-800/30 border-slate-100 dark:border-slate-800'
+            isAgentic
+              ? 'bg-[var(--primary)]/5 border-[var(--primary)]/20 shadow-sm'
+              : 'bg-[var(--bg-card2)] border-[var(--border-subtle)]'
           }`}>
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-bold text-xs uppercase tracking-widest">
-                <Sparkles size={14} /> 
-                <span>Оперативный анализ</span>
+              <div className="flex items-center gap-2 text-[var(--accent)] font-bold text-xs uppercase tracking-widest">
+                <Sparkles size={14} />
+                <span>Оперативний аналіз</span>
               </div>
-              <button onClick={fetchInsights} className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded transition-all">
+              <button onClick={fetchInsights} className="p-1 hover:bg-[var(--primary)]/10 rounded transition-all">
                 <History size={14} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
 
             {loading && !insights ? (
-              <div className="py-8 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
-                <Loader2 size={24} className="animate-spin text-indigo-600" />
-                <span className="italic animate-pulse">Анализирую производство...</span>
+              <div className="py-8 flex flex-col items-center justify-center gap-3 text-[var(--text-3)] text-sm">
+                <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
+                <span className="italic animate-pulse">Аналізую виробництво...</span>
               </div>
             ) : (
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-sans">
-                {insights || "Нажмите обновить для запуска анализа."}
+              <div className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-2)] font-sans">
+                {insights || "Натисніть оновити для запуску аналізу."}
               </div>
             )}
-            
+
             {isAgentic && !loading && insights && (
-              <div className="mt-4 pt-4 border-t border-indigo-100 dark:border-indigo-900/30 flex items-center gap-2 px-1">
+              <div className="mt-4 pt-4 border-t border-[var(--primary)]/20 flex items-center gap-2 px-1">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-tighter">
-                  Сгенерировано согласно Domain Skills
+                <span className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-tighter">
+                  Згенеровано згідно Domain Skills
                 </span>
               </div>
             )}
@@ -193,7 +193,7 @@ export default function AssistantSidebar() {
                   className={`max-w-[85%] p-3.5 rounded-2xl text-[13px] shadow-sm leading-snug ${
                     msg.role === 'user'
                       ? 'bg-indigo-600 text-white rounded-br-none'
-                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border dark:border-slate-700'
+                      : 'bg-[var(--bg-card)] text-[var(--text-1)] rounded-bl-none border border-[var(--border)]'
                   }`}
                 >
                   {msg.content}
@@ -202,7 +202,7 @@ export default function AssistantSidebar() {
             ))}
             {loading && chat.length > 0 && (
               <div className="flex justify-start">
-                <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl rounded-bl-none border dark:border-slate-700 animate-pulse">
+                <div className="bg-[var(--bg-card)] p-3 rounded-2xl rounded-bl-none border border-[var(--border)] animate-pulse">
                   <div className="flex gap-1.5">
                     <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
                     <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce delay-75" />
@@ -215,15 +215,15 @@ export default function AssistantSidebar() {
         </div>
 
         {/* Поле ввода */}
-        <div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900">
+        <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
           <div className="relative group">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Спросить ассистента..."
-              className="w-full p-4 pr-14 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all text-sm"
+              placeholder="Запитати асистента..."
+              className="w-full p-4 pr-14 bg-[var(--bg-card2)]/50 border border-[var(--border)] rounded-2xl focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all text-sm"
               disabled={loading}
             />
             <button
@@ -235,7 +235,7 @@ export default function AssistantSidebar() {
             </button>
           </div>
           <div className="flex justify-between items-center mt-3 px-1">
-             <p className="text-[10px] text-slate-400">
+             <p className="text-[10px] text-[var(--text-3)]">
               Agentic Shveika AI v2.0
             </p>
             {isAgentic && <Zap size={10} className="text-indigo-500 animate-pulse" />}

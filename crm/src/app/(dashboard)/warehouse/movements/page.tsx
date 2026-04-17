@@ -164,11 +164,11 @@ export default function MovementsPage() {
                     </td>
                     <td className="px-6 py-4">
                        <div className="flex flex-col gap-1.5 justify-center">
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-2)]">
                              <MapPin className="h-3 w-3 text-red-500" />
                              {entry.source?.name}
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-2)]">
                              <MapPin className="h-3 w-3 text-emerald-500" />
                              {entry.target?.name}
                           </div>
@@ -201,7 +201,7 @@ export default function MovementsPage() {
                 <h3 className="text-2xl font-black text-[var(--text-1)]">Переміщення</h3>
                 <p className="text-[var(--text-3)] text-xs font-medium">Double-Entry Транзакція</p>
               </div>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 rounded-2xl transition-all">
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-2xl transition-all">
                 <X className="h-6 w-6" />
               </button>
             </div>

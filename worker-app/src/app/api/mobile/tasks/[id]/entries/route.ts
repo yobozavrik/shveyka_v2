@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import {
+  buildSizeRows,
+  extractSizeBreakdown,
+  mergeSizeBreakdowns,
+  sumSizeQuantities,
+  type SizeQuantityMap,
+} from '@/lib/overlock';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,7 +42,73 @@ function getOperationSchema(operation: any): Array<Record<string, any>> {
   return Array.isArray(schema) ? schema : [];
 }
 
-function inferQuantity(data: Record<string, any>, operationCode: string) {
+/**
+ * Извлекает количество размеров из size_variants партии.
+ * Поддерживает форматы:
+ * - { selected_sizes: ['S', 'M', 'L'] }
+ * - { sizes: ['S', 'M', 'L'] }
+ * - { S: 10, M: 10, L: 10 } (ключи = размеры)
+ */
+function getSizeCount(sizeVariants: Record<string, any> | null): number {
+  if (!sizeVariants || typeof sizeVariants !== 'object') return 0;
+
+  // Формат: { selected_sizes: ['S', 'M', 'L'] }
+  if (Array.isArray(sizeVariants.selected_sizes)) {
+    return sizeVariants.selected_sizes.length;
+  }
+
+  // Формат: { sizes: ['S', 'M', 'L'] }
+  if (Array.isArray(sizeVariants.sizes)) {
+    return sizeVariants.sizes.length;
+  }
+
+  // Формат: { S: 10, M: 10, L: 10 } — считаем ключи кроме специальных
+  const specialKeys = new Set(['selected_sizes', 'sizes']);
+  const sizeKeys = Object.keys(sizeVariants).filter(k => !specialKeys.has(k));
+  return sizeKeys.length;
+}
+
+/**
+ * Строит детальную разбивку по размерам для раскроя.
+ * Если quantity_per_nastil = 21 и размеры ['S','M','L','XL','XXL'],
+ * то вернёт { S: 21, M: 21, L: 21, XL: 21, XXL: 21 }
+ */
+function buildSizeBreakdown(
+  quantityPerNastil: number,
+  sizeVariants: Record<string, any> | null,
+): Record<string, number> {
+  if (!sizeVariants || typeof sizeVariants !== 'object') return {};
+
+  const breakdown: Record<string, number> = {};
+
+  // Формат: { selected_sizes: ['S', 'M', 'L'] }
+  if (Array.isArray(sizeVariants.selected_sizes)) {
+    for (const size of sizeVariants.selected_sizes) {
+      breakdown[String(size)] = quantityPerNastil;
+    }
+    return breakdown;
+  }
+
+  // Формат: { sizes: ['S', 'M', 'L'] }
+  if (Array.isArray(sizeVariants.sizes)) {
+    for (const size of sizeVariants.sizes) {
+      breakdown[String(size)] = quantityPerNastil;
+    }
+    return breakdown;
+  }
+
+  // Формат: { S: 10, M: 10, L: 10 } — используем значения как есть
+  const specialKeys = new Set(['selected_sizes', 'sizes']);
+  for (const [key, value] of Object.entries(sizeVariants)) {
+    if (!specialKeys.has(key)) {
+      breakdown[key] = Number(value) || quantityPerNastil;
+    }
+  }
+
+  return breakdown;
+}
+
+function inferQuantity(data: Record<string, any>, operationCode: string, sizeCount: number = 0) {
   const preferredKeys = [
     'quantity',
     'quantity_done',
@@ -44,18 +117,25 @@ function inferQuantity(data: Record<string, any>, operationCode: string) {
     'quantity_per_nastil',
   ];
 
+  // Находим базовое количество из данных формы
+  let baseQuantity = 0;
   for (const key of preferredKeys) {
     const value = data[key];
     const numeric = typeof value === 'number' ? value : Number(value);
-    if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      baseQuantity = Math.trunc(numeric);
+      break;
+    }
   }
 
-  if (operationCode === 'nastil') {
-    const numeric = Number(data.quantity_per_nastil);
-    if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
+  // Для раскроя/настила: умножаем на количество размеров
+  // quantity_per_nastil = количество на ОДИН размер
+  // ИТОГО = quantity_per_nastil × количество_размеров
+  if (operationCode === 'nastil' && sizeCount > 0 && baseQuantity > 0) {
+    return baseQuantity * sizeCount;
   }
 
-  return null;
+  return baseQuantity > 0 ? baseQuantity : null;
 }
 
 async function loadTask(taskId: number) {
@@ -96,6 +176,40 @@ async function loadOperation(operationId: number) {
     .select('id, stage_id, code, name, field_schema, sort_order, is_active')
     .eq('id', operationId)
     .single();
+}
+
+async function loadCuttingStage() {
+  const supabase = getSupabaseAdmin('shveyka');
+  return supabase
+    .from('production_stages')
+    .select('id, code, name, assigned_role, sequence_order, color, is_active')
+    .eq('code', 'cutting')
+    .single();
+}
+
+async function loadBatchSizeBreakdown(batchId: number): Promise<SizeQuantityMap> {
+  const supabase = getSupabaseAdmin('shveyka');
+  const { data: cuttingStage, error: cuttingStageError } = await loadCuttingStage();
+
+  if (cuttingStageError || !cuttingStage?.id) {
+    return {};
+  }
+
+  const { data: rows, error } = await supabase
+    .from('task_entries')
+    .select('data, quantity')
+    .eq('batch_id', batchId)
+    .eq('stage_id', cuttingStage.id)
+    .order('created_at', { ascending: true });
+
+  if (error || !rows?.length) return {};
+
+  const breakdown: SizeQuantityMap = {};
+  for (const row of rows as Array<{ data: Record<string, any> }>) {
+    mergeSizeBreakdowns(breakdown, extractSizeBreakdown(row.data));
+  }
+
+  return breakdown;
 }
 
 export async function POST(request: Request, { params }: Params) {
@@ -167,6 +281,8 @@ export async function POST(request: Request, { params }: Params) {
   const fieldSchema = getOperationSchema(operation);
   const data = { ...rawData };
   const batchColors = parseFabricColors(batch?.fabric_color || null);
+  const sourceSizeBreakdown = task.batch_id ? await loadBatchSizeBreakdown(task.batch_id) : {};
+  let overlockRows: Array<{ size: string; planned_qty: number; quantity: number; defect_quantity: number }> = [];
 
   for (const field of fieldSchema) {
     if (!field || typeof field !== 'object') continue;
@@ -184,6 +300,36 @@ export async function POST(request: Request, { params }: Params) {
         return NextResponse.json({ error: 'Color must belong to the batch palette' }, { status: 400 });
       }
     }
+  }
+
+  if (stage?.code === 'overlock') {
+    const incomingRows = Array.isArray((data as any).size_rows) ? (data as any).size_rows : [];
+    overlockRows = buildSizeRows(sourceSizeBreakdown, incomingRows).filter((row) => row.planned_qty > 0);
+
+    if (overlockRows.length === 0) {
+      return NextResponse.json({ error: 'Overlock requires size rows from the source cutting breakdown' }, { status: 400 });
+    }
+
+    for (const row of overlockRows) {
+      if (row.quantity < 0 || row.defect_quantity < 0) {
+        return NextResponse.json({ error: 'Quantity and defect must be non-negative' }, { status: 400 });
+      }
+
+      if (row.quantity > row.planned_qty) {
+        return NextResponse.json({ error: `Size ${row.size} exceeds the cutting breakdown limit` }, { status: 400 });
+      }
+
+      if (row.defect_quantity > row.quantity) {
+        return NextResponse.json({ error: `Size ${row.size} defect cannot exceed the entered quantity` }, { status: 400 });
+      }
+    }
+
+    const totals = sumSizeQuantities(overlockRows);
+    data.size_rows = overlockRows;
+    data.size_breakdown = sourceSizeBreakdown;
+    data.total_good_quantity = totals.quantity;
+    data.total_defect_quantity = totals.defect_quantity;
+    data.size_count = overlockRows.length;
   }
 
   if (task.status === 'accepted') {
@@ -210,7 +356,38 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
 
   const entryNumber = Number(existingMaxEntry?.entry_number || 0) + 1;
-  const quantity = inferQuantity(data, operation.code);
+
+  // ──────────────────────────────────────────────────────────────────
+  // РАСЧЁТ КОЛИЧЕСТВА ДЛЯ РАСКРОЯ (nastil)
+  // ──────────────────────────────────────────────────────────────────
+  // Для настила: quantity_per_nastil — это количество на ОДИН размер.
+  // Реальная выработка = quantity_per_nastil × количество_размеров.
+  // Пример: 21 шт × 5 размеров (S,M,L,XL,XXL) = 105 шт всего.
+  // ──────────────────────────────────────────────────────────────────
+  const sizeCount = getSizeCount(batch?.size_variants || null);
+  const quantity =
+    stage?.code === 'overlock'
+      ? Number((data as any).total_good_quantity || 0) || null
+      : inferQuantity(data, operation.code, sizeCount);
+
+  // Для раскроя добавляем в data детальную разбивку по размерам
+  const enrichedData = { ...data };
+  if (operation.code === 'nastil' && sizeCount > 0) {
+    const quantityPerNastil = Number(data.quantity_per_nastil || data.quantity || 0);
+    if (quantityPerNastil > 0) {
+      enrichedData.size_breakdown = buildSizeBreakdown(quantityPerNastil, batch?.size_variants || null);
+      enrichedData.size_count = sizeCount;
+      enrichedData.quantity_per_nastil = quantityPerNastil;
+    }
+  }
+
+  if (stage?.code === 'overlock') {
+    enrichedData.size_rows = overlockRows;
+    enrichedData.size_breakdown = sourceSizeBreakdown;
+    enrichedData.total_good_quantity = Number((data as any).total_good_quantity || 0) || 0;
+    enrichedData.total_defect_quantity = Number((data as any).total_defect_quantity || 0) || 0;
+    enrichedData.size_count = overlockRows.length;
+  }
 
   const entryPayload = {
     task_id: taskId,
@@ -220,8 +397,9 @@ export async function POST(request: Request, { params }: Params) {
     operation_id: operationId,
     entry_number: entryNumber,
     quantity,
-    data,
+    data: enrichedData,
     notes,
+    status: 'submitted', // Всегда на проверку Мастеру
   };
 
   const { data: insertedEntry, error: entryError } = await supabase
@@ -244,8 +422,71 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: entryError?.message || 'Failed to save entry' }, { status: 500 });
   }
 
+  const operationEntryPayloads = (() => {
+    const basePayload = {
+      production_batch_id: task.batch_id,
+      employee_id: user.employeeId,
+      operation_id: operationId,
+      notes,
+      status: 'submitted',
+      entry_source: 'task',
+    };
+
+    if (stage?.code === 'overlock') {
+      return overlockRows.map((row) => ({
+        ...basePayload,
+        quantity: row.quantity,
+        defect_quantity: row.defect_quantity,
+        metric_value: 0,
+        size: row.size,
+      }));
+    }
+
+    if (stage?.code === 'cutting' && operation.code === 'nastil') {
+      const sizeBreakdown = (enrichedData.size_breakdown && typeof enrichedData.size_breakdown === 'object')
+        ? enrichedData.size_breakdown
+        : {};
+
+      const sizeRows = Object.entries(sizeBreakdown).map(([size, qty]) => ({
+        size: String(size).trim(),
+        quantity: Number(qty) || 0,
+        defect_quantity: 0,
+        metric_value: 0,
+      })).filter((row) => row.size && row.quantity > 0);
+
+      if (sizeRows.length > 0) {
+        return sizeRows.map((row) => ({
+          ...basePayload,
+          quantity: row.quantity,
+          defect_quantity: row.defect_quantity,
+          metric_value: row.metric_value,
+          size: row.size,
+        }));
+      }
+    }
+
+    return [{
+      ...basePayload,
+      quantity: Number(quantity || 0) || 0,
+      defect_quantity: Number((data as any)?.defect_quantity || 0) || 0,
+      metric_value: Number((data as any)?.metric_value || 0) || 0,
+      size: typeof (data as any)?.size === 'string' ? String((data as any).size).trim() || null : null,
+    }];
+  })();
+
+  const { error: operationEntryError } = await supabase
+    .from('operation_entries')
+    .insert(operationEntryPayloads);
+
+  if (operationEntryError) {
+    await supabase.from('task_entries').delete().eq('id', insertedEntry.id);
+    return NextResponse.json({ error: operationEntryError.message }, { status: 500 });
+  }
+
   let legacyNastil: any = null;
   if (stage?.code === 'cutting' && operation.code === 'nastil') {
+    const legacyTotalQty = quantity || Number(data.quantity_per_nastil || 0) * sizeCount || 0;
+
     const legacyPayload = {
       task_id: taskId,
       batch_id: task.batch_id,
@@ -259,8 +500,8 @@ export async function POST(request: Request, { params }: Params) {
       remainder_kg: Number(data.remainder_kg || 0) || null,
       nastil_name: String(data.nastil_number || ''),
       age_group: 'custom',
-      sizes_json: [],
-      total_qty: Number(data.quantity_per_nastil || quantity || 0) || 0,
+      sizes_json: enrichedData.size_breakdown || [],
+      total_qty: legacyTotalQty,
       notes,
     };
 

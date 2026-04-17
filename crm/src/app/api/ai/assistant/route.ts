@@ -1,104 +1,51 @@
 import { NextResponse } from 'next/server';
-import { getProductionInsights, askAssistant } from '@/lib/ai/assistant';
 import { getAuth } from '@/lib/auth-server';
 import { AgenticOrchestrator } from '@/lib/ai/agentic/application/AgenticOrchestrator';
-
-let orchestrator: AgenticOrchestrator | null = null;
-
-function getOrchestrator(): AgenticOrchestrator {
-  if (!orchestrator) {
-    orchestrator = new AgenticOrchestrator();
-  }
-
-  return orchestrator;
-}
-
-export async function GET(request: Request) {
-  try {
-    const user = await getAuth();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { searchParams } = new URL(request.url);
-    const mode = searchParams.get('mode');
-    const action = searchParams.get('action');
-    const orderId = searchParams.get('orderId');
-    const employeeId = searchParams.get('employeeId');
-    const periodId = searchParams.get('periodId');
-    const sopName = searchParams.get('sop');
-    const query = searchParams.get('q');
-
-    if (action === 'explain-order' && orderId) {
-      const explanation = await getOrchestrator().explainOrder(parseInt(orderId));
-      return NextResponse.json({ explanation, version: '2.1.0' });
-    }
-
-    if (action === 'explain-payroll') {
-      const explanation = await getOrchestrator().explainPayroll(
-        employeeId ? parseInt(employeeId) : undefined,
-        periodId ? parseInt(periodId) : undefined
-      );
-      return NextResponse.json({ explanation, version: '2.1.0' });
-    }
-
-    if (action === 'get-sop' && sopName) {
-      const content = await getOrchestrator().retrieveSOP(sopName);
-      return NextResponse.json({ content, version: '2.1.0' });
-    }
-
-    if (action === 'search' && query) {
-      const results = await getOrchestrator().searchKnowledge(query, 5);
-      return NextResponse.json({ results, version: '2.1.0' });
-    }
-
-    if (mode === 'agentic') {
-      const insights = await getOrchestrator().getSmartInsights();
-      return NextResponse.json({ insights, version: '2.0.0-agentic' });
-    }
-
-    const insights = await getProductionInsights();
-    return NextResponse.json({ insights, version: '1.0.0-classic' });
-  } catch (error: any) {
-    console.error('AI GET Route Error:', error);
-    return NextResponse.json({ 
-      error: 'Ошибка при получении инсайтов',
-      details: error.message 
-    }, { status: 500 });
-  }
-}
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function POST(request: Request) {
   try {
-    const user = await getAuth();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
+    const { role, employeeId: authEmployeeId } = auth;
 
-    const { question, history, mode, action, orderId, employeeId, periodId } = await request.json();
+    const body = await request.json();
+    const { question, history, mode = 'agentic', action, orderId, employeeId, periodId } = body;
 
+    const orchestrator = new AgenticOrchestrator();
+
+    // Специальные быстрые действия
     if (action === 'explain-order' && orderId) {
-      const explanation = await getOrchestrator().explainOrder(orderId);
-      return NextResponse.json({ explanation, version: '2.1.0' });
+      const answer = await orchestrator.explainOrder(parseInt(orderId));
+      return ApiResponse.success({ answer, version: '2.1.0', role });
     }
 
     if (action === 'explain-payroll') {
-      const explanation = await getOrchestrator().explainPayroll(employeeId, periodId);
-      return NextResponse.json({ explanation, version: '2.1.0' });
+      const empId = employeeId ? parseInt(employeeId) : (authEmployeeId || undefined);
+      const perId = periodId ? parseInt(periodId) : undefined;
+      const answer = await orchestrator.explainPayroll(empId, perId);
+      return ApiResponse.success({ answer, version: '2.1.0', role });
+    }
+
+    if (!question) {
+      return ApiResponse.error('Повідомлення обов\'язкове', ERROR_CODES.BAD_REQUEST, 400);
+    }
+
+    let answer: string;
+    if (mode === 'agentic') {
+      answer = await orchestrator.handleAgenticQuery(question, history || []);
+    } else {
+      answer = await orchestrator.handleUserQuery(question, history || []);
     }
     
-    if (!question) {
-      return NextResponse.json({ error: 'Сообщение обязательно' }, { status: 400 });
-    }
+    return ApiResponse.success({
+      answer,
+      version: '2.1.0',
+      role
+    });
 
-    if (mode === 'agentic') {
-      const answer = await getOrchestrator().handleAgenticQuery(question, history || []);
-      return NextResponse.json({ answer, version: '2.0.0-agentic' });
-    }
-
-    const answer = await askAssistant(question, history || []);
-    return NextResponse.json({ answer, version: '1.0.0-classic' });
   } catch (error: any) {
-    console.error('AI POST Route Error:', error);
-    return NextResponse.json({ 
-      error: 'Ошибка при обработке вопроса',
-      details: error.message 
-    }, { status: 500 });
+    return ApiResponse.handle(error, 'ai_assistant');
   }
 }
