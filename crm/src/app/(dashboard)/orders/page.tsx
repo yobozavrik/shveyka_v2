@@ -1,14 +1,18 @@
 'use client';
 
-import { type FormEvent, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { type FormEvent, Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
+  Calendar,
+  ChevronDown,
   FileText,
-  Plus,
-  X,
   Loader2,
-  ArrowRight,
-  Database
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -18,195 +22,382 @@ type ProductionOrder = {
   order_type: 'stock' | 'customer';
   status: string;
   total_quantity: number;
+  planned_completion_date?: string | null;
   created_at: string;
   base_models?: { name: string };
 };
 
-export default function OrdersPage() {
+type OrderLineItem = {
+  id: string;
+  base_model_id: string;
+  quantity: string;
+};
+
+function OrdersContent() {
+  const searchParams = useSearchParams();
+  const activeTab = searchParams?.get('tab') || 'orders';
+
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const [baseModels, setBaseModels] = useState<any[]>([]);
+  const [showForm, setShowForm] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [form, setForm] = useState({
     order_type: 'stock',
-    base_model_id: '',
-    total_quantity: '',
+    planned_completion_date: '',
   });
+  const [items, setItems] = useState<OrderLineItem[]>([
+    { id: 'line-1', base_model_id: '', quantity: '1' },
+  ]);
 
   useEffect(() => {
-    fetchOrders();
-    loadBaseModels();
-  }, []);
+    void fetchOrders();
+    void loadCatalogData();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowForm(false);
+      }
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [showForm]);
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/production-orders');
-      const data = await res.json();
+      const res = await fetch(`/api/production-orders?tab=${activeTab}`);
+      const text = await res.text();
+      if (!res.ok) {
+        console.error('fetchOrders failed:', res.status, text);
+        setOrders([]);
+        return;
+      }
+      const data = text ? JSON.parse(text) : [];
       setOrders(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch (e) {
+      console.error('fetchOrders error:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const loadBaseModels = async () => {
+  const loadCatalogData = async () => {
     try {
-      const res = await fetch('/api/catalog/base-models');
-      const data = await res.json();
-      setBaseModels(data);
-    } catch (e) { console.error(e); }
+      const bRes = await fetch('/api/catalog/base-models');
+      const bData = await bRes.json();
+      setBaseModels(Array.isArray(bData) ? bData : []);
+    } catch (e) {
+      console.error('loadCatalogData error:', e);
+    }
+  };
+
+  const addItem = () => {
+    setItems((prev) => [...prev, { id: crypto.randomUUID(), base_model_id: '', quantity: '1' }]);
+  };
+
+  const removeItem = (id: string) => {
+    setItems((prev) => (prev.length > 1 ? prev.filter((i) => i.id !== id) : prev));
+  };
+
+  const updateItem = (id: string, patch: Partial<OrderLineItem>) => {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  };
+
+  const resetForm = () => {
+    setForm({
+      order_type: 'stock',
+      planned_completion_date: '',
+    });
+    setItems([{ id: 'line-1', base_model_id: '', quantity: '1' }]);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.base_model_id) return alert('Оберіть базову модель');
-    
-    setLoading(true);
+    const validItems = items.filter((i) => i.base_model_id);
+    if (validItems.length === 0) return;
+
+    const uniqueModels = [...new Set(validItems.map((i) => i.base_model_id))];
+    if (uniqueModels.length > 1) {
+      alert('Зараз API підтримує одне замовлення на одну модель. Залиште одну модель у списку.');
+      return;
+    }
+
+    const totalQuantity = validItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+    setSaving(true);
     try {
       const res = await fetch('/api/production-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
-          total_quantity: Number(form.total_quantity) || 0,
-          status: 'draft' // Статус Нове
+          order_type: form.order_type,
+          planned_completion_date: form.planned_completion_date || null,
+          base_model_id: Number(uniqueModels[0]),
+          total_quantity: totalQuantity,
         }),
       });
+
       if (res.ok) {
-        setShowModal(false);
-        setForm({ order_type: 'stock', base_model_id: '', total_quantity: '' });
-        fetchOrders();
+        resetForm();
+        await fetchOrders();
       }
-    } catch (e) { alert('Помилка при створенні замовлення'); }
-    finally { setLoading(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
+  const filteredOrders = orders.filter((order) => {
+    const matchesSearch =
+      !search ||
+      order.order_number.toLowerCase().includes(search.toLowerCase()) ||
+      (order.base_models?.name || '').toLowerCase().includes(search.toLowerCase());
+
+    if (!matchesSearch) return false;
+    if (statusFilter === 'all') return true;
+    return order.status === statusFilter;
+  });
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 flex items-center gap-3">
-            <FileText className="h-8 w-8 text-blue-600" />
-            Виробничі замовлення
-          </h1>
-          <p className="text-gray-500 mt-1 text-sm font-medium uppercase tracking-wider">Управління планами та партіями</p>
+    <div className="min-h-screen bg-[#f5f6f8] px-6 py-7">
+      <div className="mx-auto max-w-[1248px] space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-[38px] leading-[42px] font-bold flex items-center gap-3 text-[#111827]">
+              <FileText className="h-8 w-8 text-[#2563eb]" />
+              Замовлення
+            </h1>
+            <p className="text-[#6b7280] mt-1">Планування випуску продукції</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => void fetchOrders()}
+              className="h-10 px-5 border border-[#d1d5db] rounded-lg text-[#374151] hover:bg-[#f9fafb] inline-flex items-center gap-2"
+            >
+              <RefreshCw size={16} />
+              Оновити
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="h-10 px-5 bg-[#2563eb] rounded-lg text-white font-semibold hover:bg-[#1d4ed8] inline-flex items-center gap-2"
+            >
+              <Plus size={16} />
+              Заповнити замовлення
+            </button>
+          </div>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all active:scale-95"
-        >
-          <Plus size={20} />
-          Створити замовлення
-        </button>
-      </div>
 
-      {/* Orders List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          <div className="col-span-full flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>
-        ) : orders.map(o => (
-          <Link 
-            key={o.id} 
-            href={`/production-orders/${o.id}`} 
-            className="group p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-2xl hover:shadow-gray-200/50 transition-all flex flex-col justify-between min-h-[180px]"
+        {showForm && (
+          <div
+            className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-6 overflow-y-auto"
+            onClick={() => setShowForm(false)}
           >
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="font-mono text-sm font-bold text-gray-400 group-hover:text-blue-600 transition-colors">#{o.order_number}</span>
-                <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-[10px] font-black uppercase tracking-widest border border-gray-200">
-                  {o.status === 'draft' ? 'Нове' : o.status}
-                </span>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 group-hover:translate-x-1 transition-transform inline-flex items-center gap-2">
-                {o.base_models?.name || 'Без моделі'}
-                <ArrowRight size={16} className="opacity-0 group-hover:opacity-100 transition-all" />
-              </h3>
+            <div
+              className="mx-auto mt-8 max-w-[1120px] border border-[#d1d5db] rounded-2xl bg-white p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-[34px] font-semibold text-[#111827]">Заповнення замовлення</h2>
+              <button onClick={() => setShowForm(false)} className="text-[#9ca3af] hover:text-[#6b7280]">
+                <X size={20} />
+              </button>
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between text-sm">
-              <span className="text-gray-400 font-medium">План: <b className="text-gray-900">{o.total_quantity} шт</b></span>
-              <span className="text-[10px] text-gray-300 font-bold uppercase">{new Date(o.created_at).toLocaleDateString()}</span>
-            </div>
-          </Link>
-        ))}
-      </div>
 
-      {/* Modal: New Order */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-[40px] w-full max-w-lg p-10 space-y-8 shadow-2xl border border-white/20 animate-in zoom-in-95 duration-300">
-            <div className="flex justify-between items-center">
+            <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Нове замовлення</h2>
-                <p className="text-xs text-gray-400 font-black uppercase tracking-widest mt-1">Крок 1: Планування бази</p>
+                <label className="block text-xs font-semibold text-[#374151] mb-2">ТИП ЗАМОВЛЕННЯ</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, order_type: 'stock' }))}
+                    className={`h-11 rounded-lg border text-left px-4 ${
+                      form.order_type === 'stock'
+                        ? 'border-[#2563eb] bg-[#eff6ff] text-[#1e3a8a]'
+                        : 'border-[#d1d5db] text-[#111827]'
+                    }`}
+                  >
+                    На склад
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, order_type: 'customer' }))}
+                    className={`h-11 rounded-lg border text-left px-4 ${
+                      form.order_type === 'customer'
+                        ? 'border-[#2563eb] bg-[#eff6ff] text-[#1e3a8a]'
+                        : 'border-[#d1d5db] text-[#111827]'
+                    }`}
+                  >
+                    Замовнику
+                  </button>
+                </div>
               </div>
-              <button onClick={() => setShowModal(false)} className="p-3 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"><X size={24} /></button>
-            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Місце призначення</label>
-                <div className="flex gap-3">
-                  {[
-                    { id: 'stock', label: 'На склад' },
-                    { id: 'customer', label: 'Замовнику' }
-                  ].map(t => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setForm({...form, order_type: t.id as any})}
-                      className={`flex-1 py-4 rounded-2xl border-2 font-bold text-sm transition-all ${
-                        form.order_type === t.id 
-                        ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-lg shadow-blue-500/10' 
-                        : 'border-gray-50 bg-gray-50 text-gray-400 hover:border-gray-200'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
+              <div className="max-w-sm">
+                <label className="block text-xs font-semibold text-[#374151] mb-2">ДАТА, КОЛИ ТРЕБА ВИКОНАТИ</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={form.planned_completion_date}
+                    onChange={(e) => setForm((p) => ({ ...p, planned_completion_date: e.target.value }))}
+                    className="h-10 w-full rounded-lg border border-[#d1d5db] px-3 pr-10 text-sm"
+                  />
+                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" size={14} />
+                </div>
+              </div>
+
+              <div className="border-t border-[#e5e7eb] pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[#111827] font-semibold inline-flex items-center gap-2">
+                    <Package size={14} />
+                    МОДЕЛІ
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="h-8 px-3 rounded-md bg-[#ecfdf5] text-[#059669] text-sm font-medium border border-[#d1fae5] inline-flex items-center gap-1"
+                  >
+                    <Plus size={14} />
+                    Додати модель
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {items.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-[#d1d5db] bg-[#f9fafb] p-2">
+                      <div className="grid grid-cols-[1fr_160px] gap-2">
+                        <div className="relative">
+                          <select
+                            value={item.base_model_id}
+                            onChange={(e) => updateItem(item.id, { base_model_id: e.target.value })}
+                            className="h-10 w-full rounded-md border border-[#d1d5db] bg-white px-3 pr-8 text-sm appearance-none"
+                            required
+                          >
+                            <option value="">Оберіть модель</option>
+                            {baseModels.map((bm) => (
+                              <option key={bm.id} value={bm.id}>
+                                {bm.name}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6b7280]" size={14} />
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(item.id, { quantity: e.target.value })}
+                          className="h-10 rounded-md border border-[#d1d5db] bg-white px-3 text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        className="mt-1 text-xs text-[#ef4444] inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={12} />
+                        Видалити
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Базова модель (конструктив)</label>
-                <select 
-                  value={form.base_model_id}
-                  onChange={e => setForm({...form, base_model_id: e.target.value})}
-                  className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500/20 outline-none font-bold text-gray-900 appearance-none cursor-pointer shadow-inner"
-                  required
+              <div className="border-t border-[#e5e7eb] pt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="h-10 rounded-md border border-[#d1d5db] text-[#111827] font-medium"
                 >
-                  <option value="">Оберіть модель вирібу</option>
-                  {baseModels.map(bm => <option key={bm.id} value={bm.id}>{bm.name}</option>)}
-                </select>
+                  Скасувати
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="h-10 rounded-md bg-[#2563eb] text-white font-semibold hover:bg-[#1d4ed8] disabled:opacity-60"
+                >
+                  {saving ? 'Збереження...' : 'Створити замовлення'}
+                </button>
               </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Загальна кількість (план)</label>
-                <div className="relative">
-                  <input 
-                    type="number"
-                    min="1"
-                    placeholder="Напр: 100"
-                    value={form.total_quantity}
-                    onChange={e => setForm({...form, total_quantity: e.target.value})}
-                    className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500/20 outline-none font-black text-xl text-blue-600 shadow-inner"
-                    required
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 font-bold uppercase text-[10px]">одиниць</span>
-                </div>
-              </div>
-
-              <button 
-                type="submit" 
-                disabled={loading}
-                className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-bold text-lg hover:bg-blue-700 shadow-2xl shadow-blue-500/30 transition-all active:scale-95 disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Зафіксувати замовлення'}
-              </button>
             </form>
           </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <div className="relative w-[340px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" size={16} />
+            <input
+              type="text"
+              placeholder="Пошук..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-lg border border-[#d1d5db] bg-white pl-9 pr-3 text-sm"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-10 rounded-lg border border-[#d1d5db] bg-white px-3 text-sm"
+          >
+            <option value="all">Всі статуси</option>
+            <option value="draft">Чернетка</option>
+            <option value="approved">Затверджено</option>
+            <option value="in_progress">В роботі</option>
+            <option value="completed">Завершено</option>
+          </select>
         </div>
-      )}
+
+        <div className="space-y-2">
+          {loading ? (
+            <div className="py-12 text-center">
+              <Loader2 className="animate-spin text-[#2563eb] mx-auto" size={28} />
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="py-10 text-center text-[#6b7280] border border-dashed rounded-lg bg-white">
+              Замовлень не знайдено
+            </div>
+          ) : (
+            filteredOrders.map((order) => (
+              <Link
+                key={order.id}
+                href={`/production-orders/${order.id}`}
+                className="block rounded-lg border border-[#e5e7eb] bg-white p-4 hover:bg-[#f9fafb]"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-[#111827]">#{order.order_number}</div>
+                    <div className="text-sm text-[#6b7280]">{order.base_models?.name || 'Без моделі'}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-[#111827] font-medium">{order.total_quantity} шт</div>
+                    <div className="text-xs text-[#6b7280]">{order.status}</div>
+                  </div>
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="animate-spin text-blue-600" size={40} />
+        </div>
+      }
+    >
+      <OrdersContent />
+    </Suspense>
   );
 }
