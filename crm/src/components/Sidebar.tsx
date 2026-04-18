@@ -42,6 +42,7 @@ const menuGroups: MenuGroup[] = [
   {
     label: 'Виробництво',
     items: [
+      { name: 'Каталог',       icon: BookOpen,         href: '/catalog',      roles: ['admin', 'manager'] },
       { name: 'Маршрути',      icon: Map,              href: '/route-cards',  roles: ['admin', 'manager'] },
       { name: 'Вир. замовлення', icon: FileText,        href: '/production-orders',  roles: ['admin', 'manager'] },
       { name: 'Партії',        icon: Package,          href: '/batches',      roles: ['admin', 'manager', 'master', 'quality'] },
