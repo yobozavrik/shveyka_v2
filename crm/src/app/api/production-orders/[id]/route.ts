@@ -45,10 +45,17 @@ export async function GET(_request: Request, { params }: Params) {
       .select('*', { count: 'exact', head: true })
       .eq('order_id', orderId);
 
+    const { data: lines } = await supabase
+      .from('production_order_lines')
+      .select('id, model_id, model_name, model_sku, quantity, size, notes')
+      .eq('order_id', orderId)
+      .order('id', { ascending: true });
+
     return NextResponse.json({
       ...order,
       base_models: baseModel || null,
       batches: batches || [],
+      lines: lines || [],
       total_lines: totalLines || 0,
     });
   } catch (error) {
