@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   AlertTriangle,
   Calendar,
@@ -19,11 +18,22 @@ import {
 import { showConfirm } from '@/lib/confirm';
 import { OrderWorkflowPanel } from '@/components/orders/OrderWorkflowPanel';
 
+type ProductionOrderLine = {
+  id: number;
+  model_id: number;
+  model_name: string | null;
+  model_sku: string | null;
+  quantity: number;
+  size: string | null;
+  notes: string | null;
+};
+
 type ProductionOrder = {
   id: number;
   order_number: string;
   order_type: 'stock' | 'customer';
   status: string;
+  base_model_id: number | null;
   priority: string | null;
   total_quantity: number;
   total_lines: number;
@@ -32,6 +42,7 @@ type ProductionOrder = {
   planned_completion_date: string | null;
   notes: string | null;
   base_models?: { name: string } | null;
+  lines?: ProductionOrderLine[];
 };
 
 type MaterialRequirement = {
@@ -42,6 +53,17 @@ type MaterialRequirement = {
   available_quantity: number;
   shortage_quantity: number;
   status: 'ok' | 'shortage';
+};
+
+type RequirementsResponse = {
+  has_shortage: boolean;
+  can_launch: boolean;
+  materials: MaterialRequirement[];
+};
+
+type BatchFabricColor = {
+  color: string;
+  rolls: number;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -68,11 +90,11 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-600',
 };
 
-type RequirementsResponse = {
-  has_shortage: boolean;
-  can_launch: boolean;
-  materials: MaterialRequirement[];
-};
+const SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'];
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default function ProductionOrderDetailPage() {
   const params = useParams();
@@ -86,10 +108,23 @@ export default function ProductionOrderDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [creatingBatch, setCreatingBatch] = useState(false);
 
   const [editForm, setEditForm] = useState({
     planned_completion_date: '',
     priority: 'normal',
+    notes: '',
+  });
+
+  const [batchForm, setBatchForm] = useState({
+    model_id: '',
+    quantity: 1,
+    planned_start_date: '',
+    fabric_type: '',
+    selected_sizes: [] as string[],
+    fabric_colors: [] as BatchFabricColor[],
+    color_input: '',
+    rolls_input: 1,
     notes: '',
   });
 
@@ -103,8 +138,8 @@ export default function ProductionOrderDetailPage() {
       }
       const data = await res.json();
       setRequirements(data);
-    } catch (e) {
-      console.error('Failed to load requirements', e);
+    } catch (error) {
+      console.error('Failed to load requirements', error);
       setRequirements(null);
     }
   }, [orderId]);
@@ -118,15 +153,16 @@ export default function ProductionOrderDetailPage() {
         setOrder(null);
         return;
       }
-      const data = await res.json();
+
+      const data: ProductionOrder = await res.json();
       setOrder(data);
       setEditForm({
-        planned_completion_date: data?.planned_completion_date || '',
-        priority: data?.priority || 'normal',
-        notes: data?.notes || '',
+        planned_completion_date: data.planned_completion_date || '',
+        priority: data.priority || 'normal',
+        notes: data.notes || '',
       });
-    } catch (e) {
-      console.error('Failed to load order', e);
+    } catch (error) {
+      console.error('Failed to load order', error);
       setOrder(null);
     } finally {
       setLoading(false);
@@ -159,8 +195,8 @@ export default function ProductionOrderDetailPage() {
 
       if (!res.ok) throw new Error('Помилка збереження');
       await refreshAll();
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       alert('Не вдалося зберегти зміни');
     } finally {
       setSaving(false);
@@ -177,8 +213,8 @@ export default function ProductionOrderDetailPage() {
       const res = await fetch(`/api/production-orders/${orderId}/launch`, { method: 'POST' });
       if (!res.ok) throw new Error('Помилка запуску');
       await refreshAll();
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       alert('Не вдалося запустити замовлення');
     } finally {
       setLaunching(false);
@@ -195,11 +231,98 @@ export default function ProductionOrderDetailPage() {
       const res = await fetch(`/api/production-orders/${orderId}/cancel`, { method: 'POST' });
       if (!res.ok) throw new Error('Помилка скасування');
       await refreshAll();
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       alert('Не вдалося скасувати замовлення');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const openBatchModal = () => {
+    const firstLine = (order?.lines || [])[0];
+    setBatchForm({
+      model_id: firstLine?.model_id ? String(firstLine.model_id) : '',
+      quantity: Number(firstLine?.quantity || order?.total_quantity || 1),
+      planned_start_date: todayIsoDate(),
+      fabric_type: '',
+      selected_sizes: [],
+      fabric_colors: [],
+      color_input: '',
+      rolls_input: 1,
+      notes: '',
+    });
+    setShowBatchModal(true);
+  };
+
+  const toggleSize = (size: string) => {
+    setBatchForm((prev) => ({
+      ...prev,
+      selected_sizes: prev.selected_sizes.includes(size)
+        ? prev.selected_sizes.filter((value) => value !== size)
+        : [...prev.selected_sizes, size],
+    }));
+  };
+
+  const addFabricColor = () => {
+    const color = batchForm.color_input.trim();
+    const rolls = Number(batchForm.rolls_input || 1);
+    if (!color || !Number.isFinite(rolls) || rolls < 1) return;
+
+    setBatchForm((prev) => ({
+      ...prev,
+      fabric_colors: [...prev.fabric_colors, { color, rolls: Math.trunc(rolls) }],
+      color_input: '',
+      rolls_input: 1,
+    }));
+  };
+
+  const removeFabricColor = (index: number) => {
+    setBatchForm((prev) => ({
+      ...prev,
+      fabric_colors: prev.fabric_colors.filter((_, idx) => idx !== index),
+    }));
+  };
+
+  const handleCreateBatch = async () => {
+    if (!orderId || !order) return;
+    const selectedModelId = Number(batchForm.model_id);
+    if (!selectedModelId) {
+      alert('Оберіть позицію для партії');
+      return;
+    }
+
+    const selectedLine = (order.lines || []).find((line) => Number(line.model_id) === selectedModelId);
+    const quantity = Number(batchForm.quantity || selectedLine?.quantity || order.total_quantity || 1);
+
+    setCreatingBatch(true);
+    try {
+      const res = await fetch(`/api/production-orders/${orderId}/batches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_id: selectedModelId,
+          quantity,
+          planned_start_date: batchForm.planned_start_date || null,
+          fabric_type: batchForm.fabric_type || null,
+          fabric_colors: batchForm.fabric_colors,
+          selected_sizes: batchForm.selected_sizes,
+          notes: batchForm.notes || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || 'Помилка створення партії');
+      }
+
+      setShowBatchModal(false);
+      await refreshAll();
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || 'Не вдалося створити партію');
+    } finally {
+      setCreatingBatch(false);
     }
   };
 
@@ -230,9 +353,7 @@ export default function ProductionOrderDetailPage() {
               {STATUS_LABEL[order.status] || order.status}
             </span>
           </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Пріоритет: {order.priority || 'normal'}
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Пріоритет: {order.priority || 'normal'}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -246,7 +367,7 @@ export default function ProductionOrderDetailPage() {
 
           {canCreateBatch && (
             <button
-              onClick={() => setShowBatchModal(true)}
+              onClick={openBatchModal}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
             >
               <Plus size={16} />
@@ -329,7 +450,7 @@ export default function ProductionOrderDetailPage() {
                 <input
                   type="date"
                   value={editForm.planned_completion_date}
-                  onChange={(e) => setEditForm((p) => ({ ...p, planned_completion_date: e.target.value }))}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, planned_completion_date: e.target.value }))}
                   className="h-11 w-full rounded-lg border border-gray-300 px-3 pr-10 text-sm"
                 />
                 <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -339,7 +460,7 @@ export default function ProductionOrderDetailPage() {
               <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Пріоритет</label>
               <select
                 value={editForm.priority}
-                onChange={(e) => setEditForm((p) => ({ ...p, priority: e.target.value }))}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, priority: e.target.value }))}
                 className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm"
               >
                 <option value="low">Низький</option>
@@ -354,7 +475,7 @@ export default function ProductionOrderDetailPage() {
             <textarea
               rows={3}
               value={editForm.notes}
-              onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, notes: e.target.value }))}
               placeholder="Додаткові коментарі"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
@@ -418,18 +539,147 @@ export default function ProductionOrderDetailPage() {
                 <XCircle size={20} />
               </button>
             </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Для цього замовлення партії створюються через API маршрут:
-              <br />
-              <code className="text-xs bg-gray-100 rounded px-2 py-1">POST /api/production-orders/{order.id}/batches</code>
-            </p>
-            <Link
-              href={`/production-orders/${order.id}`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-            >
-              <Plus size={16} />
-              Відкрити створення партії
-            </Link>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Позиція</label>
+                <select
+                  value={batchForm.model_id}
+                  onChange={(e) => {
+                    const modelId = e.target.value;
+                    const selectedLine = (order.lines || []).find((line) => String(line.model_id) === modelId);
+                    setBatchForm((prev) => ({
+                      ...prev,
+                      model_id: modelId,
+                      quantity: Number(selectedLine?.quantity || prev.quantity || 1),
+                    }));
+                  }}
+                  className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm"
+                >
+                  <option value="">Оберіть позицію</option>
+                  {(order.lines || []).map((line) => (
+                    <option key={line.id} value={line.model_id}>
+                      {line.model_name || `Модель #${line.model_id}`} ({line.quantity} шт)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Планова дата старту</label>
+                  <input
+                    type="date"
+                    value={batchForm.planned_start_date}
+                    onChange={(e) => setBatchForm((prev) => ({ ...prev, planned_start_date: e.target.value }))}
+                    className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Тип тканини</label>
+                  <input
+                    type="text"
+                    value={batchForm.fabric_type}
+                    onChange={(e) => setBatchForm((prev) => ({ ...prev, fabric_type: e.target.value }))}
+                    placeholder="Трикотаж, фліс..."
+                    className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Розмірна сітка</label>
+                <div className="flex flex-wrap gap-2">
+                  {SIZE_OPTIONS.map((size) => {
+                    const selected = batchForm.selected_sizes.includes(size);
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => toggleSize(size)}
+                        className={`h-9 px-3 rounded-lg border text-sm font-medium ${
+                          selected
+                            ? 'bg-blue-50 border-blue-500 text-blue-700'
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Кольори тканини</label>
+                <div className="grid grid-cols-[1fr_96px_auto] gap-2">
+                  <input
+                    type="text"
+                    value={batchForm.color_input}
+                    onChange={(e) => setBatchForm((prev) => ({ ...prev, color_input: e.target.value }))}
+                    placeholder="Колір"
+                    className="h-11 rounded-lg border border-gray-300 px-3 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    value={batchForm.rolls_input}
+                    onChange={(e) => setBatchForm((prev) => ({ ...prev, rolls_input: Number(e.target.value) || 1 }))}
+                    className="h-11 rounded-lg border border-gray-300 px-3 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={addFabricColor}
+                    className="h-11 px-4 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"
+                  >
+                    Додати
+                  </button>
+                </div>
+                {batchForm.fabric_colors.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {batchForm.fabric_colors.map((item, index) => (
+                      <button
+                        key={`${item.color}-${index}`}
+                        type="button"
+                        onClick={() => removeFabricColor(index)}
+                        className="px-2 py-1 rounded-md text-xs bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      >
+                        {item.color} ({item.rolls}) ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 uppercase font-semibold mb-2">Примітки</label>
+                <textarea
+                  rows={3}
+                  value={batchForm.notes}
+                  onChange={(e) => setBatchForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchModal(false)}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Скасувати
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateBatch()}
+                  disabled={creatingBatch}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-60"
+                >
+                  {creatingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus size={16} />}
+                  Створити партію
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
