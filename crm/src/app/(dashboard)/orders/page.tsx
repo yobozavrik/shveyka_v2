@@ -55,11 +55,13 @@ type ProductModel = {
   sku: string;
   name: string;
   is_active: boolean;
+  category_id?: number | null; // Добавлено для фильтрации
 };
 
 type OrderItem = {
   id: string;
   model_id: string;
+  category_id: string; // Добавлено для фильтрации в форме
   quantity: string;
 };
 
@@ -111,6 +113,7 @@ export default function OrdersPage() {
   // Справочники
   const [locations, setLocations] = useState<{ id: number; name: string }[]>([]);
   const [clients, setClients] = useState<{ id: number; name: string; phone?: string }[]>([]);
+  const [catalogCategories, setCatalogCategories] = useState<any[]>([]);
   const [showClientModal, setShowClientModal] = useState(false);
   const [clientForm, setClientForm] = useState({ name: '', phone: '', email: '' });
 
@@ -157,10 +160,30 @@ export default function OrdersPage() {
         }
       } catch (e) { console.error('Error loading locations:', e); }
     };
+
+    const loadCategories = async () => {
+      try {
+        const res = await fetch('/api/catalog/categories');
+        if (res.ok) {
+          const data = await res.json();
+          // Разворачиваем дерево в плоский список для селекта
+          const flatten = (items: any[]): any[] => {
+            let res: any[] = [];
+            items.forEach(i => {
+              res.push(i);
+              if (i.children) res = res.concat(flatten(i.children));
+            });
+            return res;
+          };
+          setCatalogCategories(flatten(data));
+        }
+      } catch (e) { console.error('Error loading categories:', e); }
+    };
     
     loadProducts();
     loadLocations();
     loadClients();
+    loadCategories();
   }, []);
 
   // Создание клиента
@@ -243,6 +266,7 @@ export default function OrdersPage() {
       {
         id: Math.random().toString(),
         model_id: '',
+        category_id: '', 
         quantity: '1',
       },
     ]);
@@ -286,11 +310,16 @@ export default function OrdersPage() {
       customer_email: '',
     });
     setItems(
-      (order.lines || []).map((line) => ({
-        id: `${order.id}-${line.id}-${Math.random().toString(36).slice(2, 8)}`,
-        model_id: line.model_id ? String(line.model_id) : '',
-        quantity: String(line.quantity),
-      })),
+      (order.lines || []).map((line) => {
+        // Ищем модель в общем списке, чтобы вытащить её категорию
+        const product = products.find(p => p.id === line.model_id);
+        return {
+          id: `${order.id}-${line.id}-${Math.random().toString(36).slice(2, 8)}`,
+          model_id: line.model_id ? String(line.model_id) : '',
+          category_id: product?.category_id ? String(product.category_id) : '',
+          quantity: String(line.quantity),
+        };
+      }),
     );
     setShowFillCard(true);
   };
@@ -539,41 +568,75 @@ export default function OrdersPage() {
               {items.length === 0 ? (
                 <div className="rounded bg-gray-50 py-6 text-center text-gray-500">Моделей не обрано</div>
               ) : (
-                <div className="space-y-2">
-                  {items.map((item) => (
-                    <div key={item.id} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
-                          value={item.model_id}
-                          onChange={(e) => updateItem(item.id, 'model_id', e.target.value)}
-                          className="rounded border border-gray-300 px-2 py-1.5 text-sm"
-                        >
-                          <option value="">Оберіть модель</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
-                          className="rounded border border-gray-300 px-2 py-1.5 text-sm"
-                          placeholder="К-сть"
-                        />
+                <div className="space-y-3">
+                  {items.map((item) => {
+                    // Фильтруем модели по выбранной категории в этой строке
+                    const filteredModels = item.category_id 
+                      ? products.filter(p => p.category_id === Number(item.category_id))
+                      : products;
+
+                    return (
+                      <div key={item.id} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {/* Выбор категории */}
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 block">Категорія</label>
+                            <select
+                              value={item.category_id}
+                              onChange={(e) => {
+                                updateItem(item.id, 'category_id', e.target.value);
+                                updateItem(item.id, 'model_id', ''); // Сбрасываем модель при смене категории
+                              }}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                            >
+                              <option value="">Всі категорії</option>
+                              {catalogCategories.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Выбор модели с фильтрацией */}
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 block">Модель (пошук)</label>
+                            <select
+                              value={item.model_id}
+                              onChange={(e) => updateItem(item.id, 'model_id', e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500/20 outline-none"
+                            >
+                              <option value="">Оберіть модель ({filteredModels.length})</option>
+                              {filteredModels.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 pt-2 border-t border-gray-200/50">
+                          <div className="flex items-center gap-3">
+                            <label className="text-sm font-medium text-gray-600">Кількість:</label>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
+                              className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-bold text-center focus:border-blue-500 outline-none"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="flex items-center gap-1 text-xs font-medium text-red-500 hover:text-red-700 transition-colors p-1"
+                          >
+                            <Trash2 size={14} /> Видалити позицію
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.id)}
-                        className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 size={12} /> Видалити
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
