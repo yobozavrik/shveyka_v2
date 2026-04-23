@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { searchParams } = new URL(request.url);
@@ -23,20 +24,11 @@ export async function GET(request: Request) {
     }
 
     const { data, error } = await query;
-    if (error) {
-      console.error('Supabase error fetching vacancies:', error);
-      return NextResponse.json({ 
-        error: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      }, { status: 500 });
-    }
+    if (error) return ApiResponse.handle(error, 'vacancies_list');
 
-    return NextResponse.json(data);
+    return ApiResponse.success(data);
   } catch (e: any) {
-    console.error('Vacancies GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'vacancies_list');
   }
 }
 
@@ -44,7 +36,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const body = await request.json();
@@ -63,20 +55,12 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (error) {
-      console.error('Supabase error creating vacancy:', error);
-      return NextResponse.json({ 
-        error: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      }, { status: 500 });
-    }
+    if (error) return ApiResponse.handle(error, 'vacancies_post');
 
     // Record audit log
     try {
       const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'CREATE',
         entityType: 'vacancy',
         entityId: data.id.toString(),
@@ -88,9 +72,8 @@ export async function POST(request: Request) {
       console.warn('Failed to record audit log:', auditError);
     }
 
-    return NextResponse.json(data);
+    return ApiResponse.success(data, 201);
   } catch (e: any) {
-    console.error('Vacancies POST exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'vacancies_post');
   }
 }

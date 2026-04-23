@@ -1,16 +1,16 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const { searchParams } = new URL(request.url);
     const supabase = await createServerClient();
 
-    // Мы используем упрощенный селект для начала диагностики
     let query = supabase
       .from('defects')
       .select('*')
@@ -25,14 +25,10 @@ export async function GET(request: Request) {
     query = query.limit(limit);
 
     const { data, error } = await query;
-    if (error) {
-      console.error('Supabase error Defects GET:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    return NextResponse.json(data || []);
+    if (error) return ApiResponse.handle(error, 'defects_get');
+    return ApiResponse.success(data || []);
   } catch (e: any) {
-    console.error('Defects GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'defects_get');
   }
 }
 
@@ -40,7 +36,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'master', 'quality'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const body = await request.json();
@@ -53,22 +49,18 @@ export async function POST(request: Request) {
         operation_id: body.operation_id || null,
         employee_id: body.employee_id || null,
         quantity: body.quantity || 1,
-        defect_type: body.defect_type || 'minor', // Используем defect_type вместо severity
+        defect_type: body.defect_type || 'minor',
         defect_reason: body.defect_reason || body.description || '',
         decision: body.decision || 'rework',
         description: body.description || '',
-        detected_by: auth.userId, // Автоматически ставим того, кто нашел
+        detected_by: auth.userId,
       })
       .select()
       .single();
 
-    if (error) {
-      console.error('Supabase error Defects POST:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    return NextResponse.json(data, { status: 201 });
+    if (error) return ApiResponse.handle(error, 'defects_post');
+    return ApiResponse.success(data, 201);
   } catch (e: any) {
-    console.error('Defects POST exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'defects_post');
   }
 }

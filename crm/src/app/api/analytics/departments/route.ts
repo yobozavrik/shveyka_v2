@@ -1,42 +1,25 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { AnalyticsService } from '@/services/analytics.service';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
-  const auth = await getAuth();
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', 'UNAUTHORIZED', 401);
 
-  const { searchParams } = new URL(request.url);
-  const days = parseInt(searchParams.get('days') || '30');
-  const supabase = await createServerClient(true);
+    const { searchParams } = new URL(request.url);
+    const days = parseInt(searchParams.get('days') || '30');
+    
+    const result = await AnalyticsService.getDepartmentsStats(days, auth);
 
-  const dateFrom = new Date();
-  dateFrom.setDate(dateFrom.getDate() - days);
-  const dateFromStr = dateFrom.toISOString().split('T')[0];
+    if (!result.success) {
+      return ApiResponse.error(result.error!, ERROR_CODES.INTERNAL_ERROR, result.status || 500);
+    }
 
-  const { data, error } = await supabase
-    .from('operation_entries')
-    .select(`
-      quantity,
-      employees(department)
-    `)
-    .eq('status', 'confirmed')
-    .gte('entry_date', dateFromStr);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const deptMap: Record<string, { confirmed_units: number; entries_count: number }> = {};
-  (data || []).forEach((e: any) => {
-    const dept = e.employees?.department || 'Інше';
-    if (!deptMap[dept]) deptMap[dept] = { confirmed_units: 0, entries_count: 0 };
-    deptMap[dept].confirmed_units += e.quantity;
-    deptMap[dept].entries_count += 1;
-  });
-
-  const result = Object.entries(deptMap).map(([name, vals]) => ({
-    name,
-    ...vals
-  })).sort((a, b) => b.confirmed_units - a.confirmed_units);
-
-  return NextResponse.json(result);
+    return ApiResponse.success(result.data);
+  } catch (error) {
+    return ApiResponse.handle(error, 'analytics_departments');
+  }
 }

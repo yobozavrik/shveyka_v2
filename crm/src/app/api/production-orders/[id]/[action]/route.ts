@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 const ALLOWED_ROLES = ['admin', 'manager', 'master'];
 
@@ -71,7 +73,7 @@ export async function POST(
 ) {
   const auth = await getAuth();
   if (!auth || !ALLOWED_ROLES.includes(auth.role)) {
-    return NextResponse.json({ error: 'Р”РѕСЃС‚СѓРї Р·Р°Р±РѕСЂРѕРЅРµРЅРѕ' }, { status: 403 });
+    return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
   }
 
   const { action, id } = await params;
@@ -100,7 +102,7 @@ export async function POST(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return ApiResponse.handle(error, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -114,14 +116,14 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json(data);
+    return ApiResponse.success(data);
   }
 
   if (action === 'material_check') {
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Р—Р°РјРѕРІР»РµРЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     const { error: calcError } = await supabase.rpc('calculate_material_requirements', {
@@ -129,7 +131,7 @@ export async function POST(
     });
 
     if (calcError) {
-      return NextResponse.json({ error: calcError.message }, { status: 500 });
+      return ApiResponse.handle(calcError, 'production_orders_action');
     }
 
     const { data: shortages } = await supabase
@@ -148,7 +150,7 @@ export async function POST(
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return ApiResponse.handle(updateError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -162,7 +164,7 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json({
+    return ApiResponse.success({
       ...updated,
       shortages: shortages || [],
     });
@@ -172,15 +174,14 @@ export async function POST(
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Р—Р°РјРѕРІР»РµРЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     if (order.status !== 'approved') {
-      return NextResponse.json(
-        {
-          error: `Р—Р°РїСѓСЃС‚РёС‚Рё РјРѕР¶РЅР° С‚С–Р»СЊРєРё Р·Р°С‚РІРµСЂРґР¶РµРЅРµ Р·Р°РјРѕРІР»РµРЅРЅСЏ. РџРѕС‚РѕС‡РЅРёР№ СЃС‚Р°С‚СѓСЃ: "${order.status}"`,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        `Запустити можна тільки затверджене замовлення. Поточний статус: "${order.status}"`,
+        ERROR_CODES.BAD_REQUEST,
+        400
       );
     }
 
@@ -195,7 +196,7 @@ export async function POST(
       .gt('shortage_quantity', 0);
 
     if (shortageError) {
-      return NextResponse.json({ error: shortageError.message }, { status: 500 });
+      return ApiResponse.handle(shortageError, 'production_orders_action');
     }
 
     if (shortages && shortages.length > 0) {
@@ -218,7 +219,7 @@ export async function POST(
       .single();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return ApiResponse.handle(updateError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -232,7 +233,7 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json({
+    return ApiResponse.success({
       ...updatedOrder,
       batches_created: 0,
       manual_batches_required: (order.lines || []).length,
@@ -243,13 +244,14 @@ export async function POST(
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Замовлення не знайдено' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     if (order.status !== 'launched') {
-      return NextResponse.json(
-        { error: `Скасувати запуск можна лише для замовлення зі статусом "launched". Поточний статус: "${order.status}"` },
-        { status: 400 }
+      return ApiResponse.error(
+        `Скасувати запуск можна лише для замовлення зі статусом "launched". Поточний статус: "${order.status}"`,
+        ERROR_CODES.BAD_REQUEST,
+        400
       );
     }
 
@@ -259,7 +261,7 @@ export async function POST(
       .eq('order_id', orderId);
 
     if (batchesError) {
-      return NextResponse.json({ error: batchesError.message }, { status: 500 });
+      return ApiResponse.handle(batchesError, 'production_orders_action');
     }
 
     const blockingBatches = (batches || []).filter(
@@ -267,12 +269,11 @@ export async function POST(
     );
 
     if (blockingBatches.length > 0) {
-      return NextResponse.json(
-        {
-          error: 'Скасувати запуск неможливо: частина партій уже в роботі',
-          pending_batches: blockingBatches,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        'Скасувати запуск неможливо: частина партій уже в роботі',
+        ERROR_CODES.BAD_REQUEST,
+        400,
+        { pending_batches: blockingBatches }
       );
     }
 
@@ -290,7 +291,7 @@ export async function POST(
       .single();
 
     if (revertError) {
-      return NextResponse.json({ error: revertError.message }, { status: 500 });
+      return ApiResponse.handle(revertError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -306,7 +307,7 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json({
+    return ApiResponse.success({
       ...revertedOrder,
       retained_batches: (batches || []).length,
     });
@@ -316,15 +317,14 @@ export async function POST(
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Р—Р°РјРѕРІР»РµРЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     if (!['launched', 'in_production'].includes(order.status)) {
-      return NextResponse.json(
-        {
-          error: `Р—Р°РІРµСЂС€РёС‚Рё РјРѕР¶РЅР° С‚С–Р»СЊРєРё Р·Р°РїСѓС‰РµРЅРµ Р·Р°РјРѕРІР»РµРЅРЅСЏ. РџРѕС‚РѕС‡РЅРёР№ СЃС‚Р°С‚СѓСЃ: "${order.status}"`,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        `Завершити можна тільки запущене замовлення. Поточний статус: "${order.status}"`,
+        ERROR_CODES.BAD_REQUEST,
+        400
       );
     }
 
@@ -334,7 +334,7 @@ export async function POST(
       .eq('order_id', orderId);
 
     if (batchesError) {
-      return NextResponse.json({ error: batchesError.message }, { status: 500 });
+      return ApiResponse.handle(batchesError, 'production_orders_action');
     }
 
     const blockingBatches = (batches || []).filter(
@@ -342,12 +342,11 @@ export async function POST(
     );
 
     if (blockingBatches.length > 0) {
-      return NextResponse.json(
-        {
-          error: 'РќРµРјРѕР¶Р»РёРІРѕ Р·Р°РІРµСЂС€РёС‚Рё Р·Р°РјРѕРІР»РµРЅРЅСЏ: РЅРµ РІСЃС– РїР°СЂС‚С–С— РіРѕС‚РѕРІС–',
-          pending_batches: blockingBatches,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        'Неможливо завершити замовлення: не всі партії готові',
+        ERROR_CODES.BAD_REQUEST,
+        400,
+        { pending_batches: blockingBatches }
       );
     }
 
@@ -365,7 +364,7 @@ export async function POST(
       .single();
 
     if (completeError) {
-      return NextResponse.json({ error: completeError.message }, { status: 500 });
+      return ApiResponse.handle(completeError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -381,22 +380,21 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json(updatedOrder);
+    return ApiResponse.success(updatedOrder);
   }
 
   if (action === 'transfer_to_warehouse') {
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Р—Р°РјРѕРІР»РµРЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     if (order.status !== 'completed') {
-      return NextResponse.json(
-        {
-          error: `РџРµСЂРµРґР°С‚Рё РЅР° СЃРєР»Р°Рґ РјРѕР¶РЅР° С‚С–Р»СЊРєРё РїС–СЃР»СЏ Р·Р°РІРµСЂС€РµРЅРЅСЏ Р·Р°РјРѕРІР»РµРЅРЅСЏ. РџРѕС‚РѕС‡РЅРёР№ СЃС‚Р°С‚СѓСЃ: "${order.status}"`,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        `Передати на склад можна тільки після завершення замовлення. Поточний статус: "${order.status}"`,
+        ERROR_CODES.BAD_REQUEST,
+        400
       );
     }
 
@@ -414,7 +412,7 @@ export async function POST(
       .single();
 
     if (transferError) {
-      return NextResponse.json({ error: transferError.message }, { status: 500 });
+      return ApiResponse.handle(transferError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -430,22 +428,21 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json(updatedOrder);
+    return ApiResponse.success(updatedOrder);
   }
 
   if (action === 'close') {
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Р—Р°РјРѕРІР»РµРЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     if (order.status !== 'warehouse_transferred') {
-      return NextResponse.json(
-        {
-          error: `Р—Р°РєСЂРёС‚Рё РјРѕР¶РЅР° С‚С–Р»СЊРєРё РїС–СЃР»СЏ РїРµСЂРµРґР°С‡С– РЅР° СЃРєР»Р°Рґ. РџРѕС‚РѕС‡РЅРёР№ СЃС‚Р°С‚СѓСЃ: "${order.status}"`,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        `Закрити можна тільки після передачі на склад. Поточний статус: "${order.status}"`,
+        ERROR_CODES.BAD_REQUEST,
+        400
       );
     }
 
@@ -460,7 +457,7 @@ export async function POST(
       .single();
 
     if (closeError) {
-      return NextResponse.json({ error: closeError.message }, { status: 500 });
+      return ApiResponse.handle(closeError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -473,22 +470,21 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json(closedOrder);
+    return ApiResponse.success(closedOrder);
   }
 
   if (action === 'cancel') {
     const { order, error: orderError } = await loadOrderWithLines(supabase, id);
 
     if (orderError || !order) {
-      return NextResponse.json({ error: 'Р—Р°РјРѕРІР»РµРЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' }, { status: 404 });
+      return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
     if (!['draft', 'approved'].includes(order.status)) {
-      return NextResponse.json(
-        {
-          error: `РЎРєР°СЃСѓРІР°С‚Рё РјРѕР¶РЅР° С‚С–Р»СЊРєРё С‡РµСЂРЅРµС‚РєСѓ Р°Р±Рѕ Р·Р°С‚РІРµСЂРґР¶РµРЅРµ Р·Р°РјРѕРІР»РµРЅРЅСЏ. РџРѕС‚РѕС‡РЅРёР№ СЃС‚Р°С‚СѓСЃ: "${order.status}"`,
-        },
-        { status: 400 }
+      return ApiResponse.error(
+        `Скасувати можна тільки чернетку або затверджене замовлення. Поточний статус: "${order.status}"`,
+        ERROR_CODES.BAD_REQUEST,
+        400
       );
     }
 
@@ -503,7 +499,7 @@ export async function POST(
       .single();
 
     if (cancelError) {
-      return NextResponse.json({ error: cancelError.message }, { status: 500 });
+      return ApiResponse.handle(cancelError, 'production_orders_action');
     }
 
     await recordEvent(supabase, {
@@ -516,8 +512,8 @@ export async function POST(
       createdBy: auth.userId,
     });
 
-    return NextResponse.json(cancelledOrder);
+    return ApiResponse.success(cancelledOrder);
   }
 
-  return NextResponse.json({ error: 'РќРµРІС–РґРѕРјР° РґС–СЏ' }, { status: 400 });
+  return ApiResponse.error('Невідома дія', ERROR_CODES.BAD_REQUEST, 400);
 }

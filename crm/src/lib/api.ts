@@ -1,5 +1,17 @@
 const API_BASE = '/api';
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+
+  constructor(status: number, message: string, body: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function apiRequest<T>(
   path: string, 
   options: RequestInit = {}
@@ -23,8 +35,8 @@ export async function apiRequest<T>(
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ message: 'Помилка мережі' }));
-    throw new Error(error.message || `Помилка ${res.status}`);
+    const body = await res.json().catch(() => ({ message: 'Network error' }));
+    throw new ApiError(res.status, body.message || `Request failed ${res.status}`, body);
   }
 
   return res.json();
@@ -105,3 +117,4 @@ export const getDefects = () => apiRequest<any[]>('/defects');
 export const createDefect = (data: any) => apiRequest<any>('/defects', { method: 'POST', body: JSON.stringify(data) });
 export const syncOrders = () => apiRequest<any>('/keycrm/sync-orders', { method: 'POST' });
 export const getSyncLog = () => apiRequest<any[]>('/keycrm/logs');
+

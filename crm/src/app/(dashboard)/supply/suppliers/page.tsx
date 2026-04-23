@@ -163,7 +163,7 @@ export default function SuppliersPage() {
                 <h3 className="text-2xl font-black text-[var(--text-1)]">Новий постачальник</h3>
                 <p className="text-[var(--text-3)] text-xs font-medium">Додавання контрагента</p>
               </div>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 rounded-2xl transition-all">
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-2xl transition-all">
                 <X className="h-6 w-6" />
               </button>
             </div>

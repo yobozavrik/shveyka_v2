@@ -1,11 +1,17 @@
 import Sidebar from '@/components/Sidebar';
 import { getAuth } from '@/lib/auth-server';
 import { ConfirmPortal } from '@/components/ui/ConfirmPortal';
+import { redirect } from 'next/navigation';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const auth = await getAuth();
-  const role = auth?.role || 'admin';
-  const username = auth?.username || 'Користувач';
+  
+  if (!auth) {
+    redirect('/login');
+  }
+
+  const role = auth.role || 'admin';
+  const username = auth.username || 'Користувач';
 
   return (
     <div className="flex h-screen bg-[var(--bg-base)] text-[var(--text-1)] overflow-hidden">

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
 import { extractSelectedSizes, extractSizeVariantQuantities } from '@/lib/sizeVariants';
+import { sortSizeLabels } from '@/lib/overlock';
 
 export interface SizeQty {
   size: string;
@@ -28,18 +29,9 @@ export interface PipelineOperation {
   sizes: SizeQty[];
 }
 
-const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', 'XXL', 'XXXL',
-  '36', '38', '40', '42', '44', '46', '48', '50', '52', '54', '56', '58', '60'];
-
 function sortSizes(sizes: SizeQty[]): SizeQty[] {
-  return [...sizes].sort((a, b) => {
-    const ai = SIZE_ORDER.indexOf(a.size.toUpperCase());
-    const bi = SIZE_ORDER.indexOf(b.size.toUpperCase());
-    if (ai === -1 && bi === -1) return a.size.localeCompare(b.size);
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
+  const order = new Map(sortSizeLabels(sizes.map((item) => item.size)).map((size, index) => [size, index]));
+  return [...sizes].sort((left, right) => (order.get(left.size) ?? 0) - (order.get(right.size) ?? 0));
 }
 
 type SizeMap = Record<string, number>;
@@ -104,17 +96,22 @@ export async function GET(
   for (const entry of (entries ?? []) as EntryRow[]) {
     const opId = entry.operation_id;
     if (!entryMap[opId]) entryMap[opId] = { confirmed: {}, submitted: {} };
+
     const size = entry.size || 'ALL';
-    const qty = entry.quantity || 0;
-    const def = entry.defect_quantity || 0;
-    const met = Number(entry.metric_value) || 0;
+    const qty = Number(entry.quantity || 0);
+    const def = Number(entry.defect_quantity || 0);
+    const met = Number(entry.metric_value || 0);
 
     if (entry.status === 'approved') {
       entryMap[opId].confirmed[size] = (entryMap[opId].confirmed[size] || 0) + qty;
     } else if (entry.status === 'submitted') {
-      // For submitted, we also track defect and metrics
       if (!entryMap[opId].submitted_details) entryMap[opId].submitted_details = {};
-      entryMap[opId].submitted_details[size] = { qty, def, met };
+      const current = entryMap[opId].submitted_details[size] || { qty: 0, def: 0, met: 0 };
+      entryMap[opId].submitted_details[size] = {
+        qty: current.qty + qty,
+        def: current.def + def,
+        met: current.met + met,
+      };
       entryMap[opId].submitted[size] = (entryMap[opId].submitted[size] || 0) + qty;
     }
   }
@@ -122,12 +119,12 @@ export async function GET(
   const totalQty = batch.quantity;
 
   // 4. Build pipeline based on the operations list order
-  const pipeline: PipelineOperation[] = opsList.map((op, index) => {
+  const pipeline: PipelineOperation[] = opsList.map((op: any, index: number) => {
     const opId = op.id;
     const opData = entryMap[opId] || { confirmed: {}, submitted: {} };
 
-    const totalConfirmed = Object.values(opData.confirmed).reduce((s, v) => s + v, 0);
-    const totalSubmitted = Object.values(opData.submitted).reduce((s, v) => s + v, 0);
+    const totalConfirmed = Object.values(opData.confirmed).reduce((s: number, v: number) => s + v, 0);
+    const totalSubmitted = Object.values(opData.submitted).reduce((s: number, v: number) => s + v, 0);
 
     const sizeSet = new Set([
       ...Object.keys(opData.confirmed),

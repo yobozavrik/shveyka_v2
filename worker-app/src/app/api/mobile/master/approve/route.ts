@@ -22,8 +22,7 @@ export async function POST(request: Request) {
       const pos = (emp.position || '').toLowerCase();
       const name = (emp.full_name || '').toLowerCase();
       if (
-        ['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир', 'менеджер'].some(p => pos.includes(p)) ||
-        name.includes('марина коваль')
+        ['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир', 'менеджер'].some(p => pos.includes(p))
       ) {
         isPrivileged = true;
       }

@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ doc_key: string }> }
 ) {
   try {
@@ -15,23 +16,22 @@ export async function GET(
       .eq('doc_key', doc_key)
       .single();
     
-    if (error || !doc) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
-    }
+    if (error || !doc) return ApiResponse.error('Document not found', ERROR_CODES.NOT_FOUND, 404);
     
-    const { data: chunks } = await supabase
+    const { data: chunks, error: chunksError } = await supabase
       .from('knowledge_chunks')
       .select('chunk_index, heading_path, content')
       .eq('document_id', doc.id)
       .order('chunk_index');
     
-    return NextResponse.json({
+    if (chunksError) return ApiResponse.handle(chunksError, 'knowledge_document_get');
+    
+    return ApiResponse.success({
       document: doc,
       chunks,
       total_chunks: chunks?.length || 0
     });
   } catch (error: any) {
-    console.error('Get document error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return ApiResponse.handle(error, 'knowledge_document_get');
   }
 }

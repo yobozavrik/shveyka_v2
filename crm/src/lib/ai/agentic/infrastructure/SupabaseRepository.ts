@@ -16,7 +16,7 @@ export class SupabaseRepository {
         planned_end_date,
         product_models(name)
       `)
-      .in('status', ['created', 'cutting', 'sewing'])
+      .in('status', ['created', 'cutting', 'sewing', 'overlock', 'straight_stitch', 'coverlock', 'packaging', 'ready'])
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -29,13 +29,13 @@ export class SupabaseRepository {
    */
   async getRecentOperationEntries() {
     const { data, error } = await supabaseAdmin
-      .from('operation_entries')
+      .from('task_entries')
       .select(`
         quantity, 
         status, 
         created_at,
-        operations(name),
-        production_batches(batch_number)
+        stage_operations:operation_id(name),
+        production_batches:batch_id(batch_number)
       `)
       .order('created_at', { ascending: false })
       .limit(20);

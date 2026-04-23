@@ -35,6 +35,7 @@ type PositionOption = {
   name: string;
   is_active: boolean;
   sort_order: number;
+  default_role?: string | null;
 };
 
 type EmployeeForm = {
@@ -68,7 +69,10 @@ const EMPTY_FORM: EmployeeForm = {
 const ROLE_OPTIONS = [
   { value: 'cutting', label: 'Розкрій' },
   { value: 'sewing', label: 'Пошиття' },
+  { value: 'embroidery', label: 'Вишивка' },
   { value: 'overlock', label: 'Оверлок' },
+  { value: 'straight_stitch', label: 'Прямострочка' },
+  { value: 'coverlock', label: 'Розпошив' },
   { value: 'packaging', label: 'Пакування' },
   { value: 'qc', label: 'Контроль якості' },
   { value: 'master', label: 'Майстер' },
@@ -100,8 +104,14 @@ function roleBadge(role?: string | null) {
       return 'bg-emerald-500/15 text-emerald-600';
     case 'sewing':
       return 'bg-blue-500/15 text-blue-600';
+    case 'embroidery':
+      return 'bg-indigo-500/15 text-indigo-600';
     case 'overlock':
       return 'bg-violet-500/15 text-violet-600';
+    case 'straight_stitch':
+      return 'bg-sky-500/15 text-sky-600';
+    case 'coverlock':
+      return 'bg-fuchsia-500/15 text-fuchsia-600';
     case 'packaging':
       return 'bg-amber-500/15 text-amber-600';
     case 'master':
@@ -470,11 +480,19 @@ export default function EmployeesPage() {
                   />
                 </label>
 
-                <label className="space-y-2">
+                  <label className="space-y-2">
                   <span className="text-xs font-black uppercase tracking-widest text-[var(--text-3)]">Посада</span>
                   <select
                     value={form.position}
-                    onChange={(e) => setForm((current) => ({ ...current, position: e.target.value }))}
+                    onChange={(e) => {
+                      const selectedName = e.target.value;
+                      const selectedPos = positions.find((p) => p.name === selectedName);
+                      setForm((current) => ({
+                        ...current,
+                        position: selectedName,
+                        role: selectedPos?.default_role || current.role,
+                      }));
+                    }}
                     className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
                     required
                   >

@@ -1,47 +1,57 @@
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { PayrollService } from '@/services/payroll.service';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
-  const auth = await getAuth();
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
-  const { searchParams } = new URL(request.url);
-  const employee_id = searchParams.get('employee_id');
-  const period_id = searchParams.get('period_id');
-  
-  const supabase = await createServerClient(true);
-  let query = supabase.from('payroll_adjustments').select('*');
-  
-  if (employee_id) query = query.eq('employee_id', employee_id);
-  if (period_id) query = query.eq('period_id', period_id);
+    const { searchParams } = new URL(request.url);
+    const employee_id = searchParams.get('employee_id');
+    const period_id = searchParams.get('period_id');
+    
+    const result = await PayrollService.getAdjustments({ employee_id, period_id }, auth);
 
-  const { data, error } = await query.order('created_at', { ascending: false });
+    if (!result.success) {
+      const status = result.status || 500;
+      const code =
+        status === 401 ? ERROR_CODES.UNAUTHORIZED :
+        status === 403 ? ERROR_CODES.FORBIDDEN :
+        status === 404 ? ERROR_CODES.NOT_FOUND :
+        status === 400 ? ERROR_CODES.BAD_REQUEST :
+        ERROR_CODES.INTERNAL_ERROR;
+      return ApiResponse.error(result.error!, code, status);
+    }
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+    return ApiResponse.success(result.data);
+  } catch (error) {
+    return ApiResponse.handle(error, 'payroll_adjustments_get');
+  }
 }
 
 export async function POST(request: Request) {
-  const auth = await getAuth();
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
+    
+    const body = await request.json().catch(() => ({}));
+    const result = await PayrollService.createAdjustment(body, auth);
 
-  const body = await request.json();
-  const supabase = await createServerClient();
+    if (!result.success) {
+      const status = result.status || 500;
+      const code =
+        status === 401 ? ERROR_CODES.UNAUTHORIZED :
+        status === 403 ? ERROR_CODES.FORBIDDEN :
+        status === 404 ? ERROR_CODES.NOT_FOUND :
+        status === 400 ? ERROR_CODES.BAD_REQUEST :
+        ERROR_CODES.INTERNAL_ERROR;
+      return ApiResponse.error(result.error!, code, status);
+    }
 
-  const { data, error } = await supabase
-    .from('payroll_adjustments')
-    .insert({
-      employee_id: body.employee_id,
-      period_id: body.period_id,
-      amount: body.amount,
-      adjustment_type: body.adjustment_type,
-      reason: body.reason,
-      created_by: auth.userId
-    })
-    .select()
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { status: 201 });
+    return ApiResponse.success(result.data, 201);
+  } catch (error) {
+    return ApiResponse.handle(error, 'payroll_adjustments_post');
+  }
 }

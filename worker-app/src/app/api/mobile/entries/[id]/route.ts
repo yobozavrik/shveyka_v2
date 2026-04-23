@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import { EntryService } from '@/services/entry.service';
 
 export async function DELETE(
   request: Request,
@@ -13,36 +13,10 @@ export async function DELETE(
   const id = parseInt(idParam);
   if (isNaN(id)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-  const supabaseAdmin = getSupabaseAdmin('shveyka');
+  const result = await EntryService.delete(id, user);
 
-  const { data: entry, error: fetchError } = await supabaseAdmin
-    .from('operation_entries')
-    .select('employee_id, status')
-    .eq('id', id)
-    .single();
-
-  if (fetchError || !entry) {
-    return NextResponse.json({ error: 'Запис не знайдено' }, { status: 404 });
-  }
-
-  if (entry.employee_id !== user.userId && entry.employee_id !== user.employeeId) {
-    return NextResponse.json({ error: 'Ви не можете видалити чужий запис' }, { status: 403 });
-  }
-
-  if (entry.status !== 'submitted') {
-    return NextResponse.json(
-      { error: 'Можна видалити лише записи зі статусом "Очікує"' },
-      { status: 400 }
-    );
-  }
-
-  const { error: deleteError } = await supabaseAdmin
-    .from('operation_entries')
-    .delete()
-    .eq('id', id);
-
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   return NextResponse.json({ success: true });

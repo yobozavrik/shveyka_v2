@@ -1,81 +1,79 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { recordAuditLog } from '@/lib/audit';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function POST(req: Request, { params }: Params) {
+export async function POST(request: Request, { params }: Params) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Forbidden', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { id } = await params;
-    const body = await req.json();
+    const candidateId = parseInt(id, 10);
+
     const supabase = await createServerClient(true);
 
-    // 1. Fetch Candidate data
+    // 1. Get candidate data
     const { data: candidate, error: candError } = await supabase
       .from('candidates')
-      .select('*, vacancies(title)')
-      .eq('id', parseInt(id))
+      .select('*')
+      .eq('id', candidateId)
       .single();
 
     if (candError || !candidate) {
-      return NextResponse.json({ error: 'Кандидата не знайдено' }, { status: 404 });
+      return ApiResponse.error('Кандидата не знайдено', ERROR_CODES.NOT_FOUND, 404);
     }
 
-    // 2. Create Employee record
-    const employeeData = {
-      full_name: candidate.full_name,
-      phone: candidate.phone || null,
-      position: body.position || candidate.vacancies?.title || 'Швея',
-      department: body.department || 'Цех',
-      payment_type: body.payment_type || 'piecework',
-      status: 'active',
-      hire_date: new Date().toISOString().split('T')[0],
-      comments: `Прийнято через AI-рекрутинг. AI Score: ${candidate.ai_score || 'N/A'}`
-    };
-
+    // 2. Create employee
     const { data: employee, error: empError } = await supabase
       .from('employees')
-      .insert([employeeData])
+      .insert({
+        full_name: candidate.full_name,
+        phone: candidate.phone,
+        position: candidate.applied_position,
+        status: 'active',
+        payment_type: 'piecework',
+        hire_date: new Date().toISOString().split('T')[0],
+      })
       .select()
       .single();
 
-    if (empError) {
-      console.error('Hiring Error (Employee Create):', empError);
-      return NextResponse.json({ error: `Ми не змогли створити картку працівника: ${empError.message}` }, { status: 500 });
+    if (empError || !employee) {
+      return ApiResponse.handle(empError, 'candidates_hire');
     }
 
-    // 3. Update Candidate status
+    // 3. Update candidate status
     await supabase
       .from('candidates')
-      .update({ status: 'hired' })
-      .eq('id', parseInt(id));
+      .update({ status: 'hired', updated_at: new Date().toISOString() })
+      .eq('id', candidateId);
 
-    // 4. Record Audit Log
+    // 4. Audit log
     try {
-      const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'CREATE',
-        entityType: 'employee_from_candidate',
+        entityType: 'employee',
         entityId: employee.id.toString(),
         newData: employee,
-        request: req,
-        auth: { id: auth.userId, username: auth.username }
+        request,
+        auth: { id: auth.userId, username: auth.username },
       });
     } catch (auditError) {
       console.warn('Audit Log Error:', auditError);
     }
 
-    return NextResponse.json({
+    return ApiResponse.success({
       success: true,
       employeeId: employee.id,
       message: 'Кандидата успішно зараховано до штату'
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'candidates_hire');
   }
 }

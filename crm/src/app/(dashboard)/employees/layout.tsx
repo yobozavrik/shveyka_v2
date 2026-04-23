@@ -18,7 +18,7 @@ export default function EmployeesLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="space-y-6">
-      <div className="flex w-fit items-center gap-1 rounded-2xl bg-black/5 p-1 dark:bg-white/5">
+      <div className="flex w-fit items-center gap-1 rounded-2xl bg-[var(--bg-card2)] p-1">
         {TABS.map((tab) => {
           const isActive = pathname === tab.href;
           return (

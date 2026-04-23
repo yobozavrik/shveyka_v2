@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(copy *)",
+      "Bash(npm run *)",
+      "Bash(del *)",
+      "Bash(mkdir *)",
+      "Bash(move *)",
+      "Bash(powershell *)",
+      "Bash(npx *)",
+      "Bash(rmdir *)",
+      "Bash(taskkill *)"
+    ]
+  },
+  "$version": 3
+}

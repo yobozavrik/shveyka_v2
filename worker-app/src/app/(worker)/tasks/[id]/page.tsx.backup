@@ -1,0 +1,1319 @@
+﻿'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Package2,
+  Scissors,
+  Send,
+  SquarePen,
+} from 'lucide-react';
+import clsx from 'clsx';
+import { extractSelectedSizes, extractSizeVariantQuantities } from '@/lib/sizeVariants';
+import {
+  getStageConfig,
+  isCuttingStage,
+  isPackagingStage,
+  isSimpleQuantityStage,
+  extractQuantity,
+  extractDefectQuantity,
+} from '@/lib/stageConfig';
+import StageHeader from '@/components/StageHeader';
+import EntryHistory from '@/components/EntryHistory';
+import QuantityForm from '@/components/QuantityForm';
+import PackagingForm from '@/components/PackagingForm';
+
+type FieldSchema = {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'select' | 'boolean' | 'date';
+  required?: boolean;
+  source?: string;
+  options?: Array<{ label: string; value: string }>;
+  placeholder?: string;
+};
+
+type StageOp = {
+  id: number;
+  stage_id: number;
+  code: string;
+  name: string;
+  field_schema: FieldSchema[];
+  sort_order: number;
+  is_active: boolean;
+};
+
+type Stage = {
+  id: number;
+  code: string;
+  name: string;
+  assigned_role: string;
+  sequence_order: number;
+  color: string | null;
+  is_active: boolean;
+  operations: StageOp[];
+};
+
+type Entry = {
+  id: number | string;
+  task_id: number;
+  batch_id: number;
+  employee_id: number;
+  stage_id: number | null;
+  operation_id: number | null;
+  entry_number: number;
+  quantity: number | null;
+  data: Record<string, any>;
+  notes: string | null;
+  recorded_at: string;
+  source?: string;
+  operation_code?: string | null;
+  operation_name?: string | null;
+};
+
+type ColorOption = {
+  color: string;
+  rolls: number;
+};
+
+type TaskResponse = {
+  task: any;
+  batch: any;
+  stage: Stage | null;
+  entries: Entry[];
+  legacy_nastils: any[];
+  display_entries: Entry[];
+  embroidery_nastils: Entry[];
+  summary?: {
+    entries: number;
+    quantity: number;
+  };
+  available_colors: string[];
+};
+
+function firstRelation<T>(value: T | T[] | null | undefined) {
+  if (Array.isArray(value)) return value[0] || null;
+  return value || null;
+}
+
+function parseColors(value?: string | null) {
+  if (!value) return [] as ColorOption[];
+
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => {
+      const match = part.match(/^(.*?)(?:\s*\((\d+)\))?$/);
+      const color = match?.[1]?.trim() || part;
+      const rolls = Math.max(1, Number(match?.[2] || 1));
+      return Array.from({ length: rolls }, () => ({ color, rolls: 1 }));
+    })
+    .sort((left, right) => left.color.localeCompare(right.color, 'uk'));
+}
+
+function parseSizes(value: any): string[] {
+  return extractSelectedSizes(value);
+}
+
+function parseLegacySizes(value: any): Array<[string, number]> {
+  if (!value || Array.isArray(value)) return [];
+
+  return Object.entries(extractSizeVariantQuantities(value)) as Array<[string, number]>;
+}
+
+function getFields(schema: any) {
+  return Array.isArray(schema) ? schema : [];
+}
+
+function inferQuantity(data: Record<string, any>, operationCode: string) {
+  for (const key of [
+    'quantity',
+    'quantity_done',
+    'quantity_cut',
+    'quantity_packed',
+    'quantity_per_nastil',
+  ]) {
+    const numeric = Number(data[key]);
+    if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
+  }
+
+  if (operationCode === 'nastil') {
+    const numeric = Number(data.quantity_per_nastil);
+    if (Number.isFinite(numeric) && numeric > 0) return Math.trunc(numeric);
+  }
+
+  return null;
+}
+
+function createDraft(fields: FieldSchema[], primaryColor: string, nextNastilNumber: string) {
+  const draft: Record<string, any> = {};
+
+  fields.forEach((field) => {
+    if (field.type === 'boolean') {
+      draft[field.key] = false;
+      return;
+    }
+
+    if (field.key === 'nastil_number') {
+      draft[field.key] = nextNastilNumber;
+      return;
+    }
+
+    if (field.type === 'select' && field.source === 'batch_colors' && field.key === 'fabric_color') {
+      draft[field.key] = primaryColor || '';
+      return;
+    }
+
+    draft[field.key] = '';
+  });
+
+  return draft;
+}
+
+function isDraftReady(fields: FieldSchema[], draft: Record<string, any>) {
+  return fields.every((field) => {
+    if (!field.required) return true;
+    if (field.type === 'boolean') return true;
+    return String(draft[field.key] ?? '').trim() !== '';
+  });
+}
+
+function normalizeTaskEntries(entries: Entry[], ops: StageOp[]) {
+  return entries.map((entry) => {
+    const op = ops.find((item) => item.id === entry.operation_id);
+    return {
+      ...entry,
+      operation_code: op?.code || entry.operation_code || null,
+      operation_name: op?.name || entry.operation_name || null,
+    };
+  });
+}
+
+function normalizeLegacyNastils(rows: any[], stageId: number | null): Entry[] {
+  return rows.map((row, index) => ({
+    id: `legacy-${row.id}`,
+    task_id: row.task_id,
+    batch_id: row.batch_id,
+    employee_id: row.employee_id || 0,
+    stage_id: stageId,
+    operation_id: null,
+    entry_number: index + 1,
+    quantity: Number(row.quantity_per_nastil || 0),
+    data: {
+      nastil_number: row.nastil_number,
+      reel_width_cm: row.reel_width_cm,
+      reel_length_m: row.reel_length_m,
+      fabric_color: row.fabric_color,
+      weight_kg: row.weight_kg,
+      quantity_per_nastil: row.quantity_per_nastil,
+      remainder_kg: row.remainder_kg,
+    },
+    notes: row.notes,
+    recorded_at: row.created_at,
+    source: 'legacy_cutting_nastils',
+    operation_code: 'nastil',
+    operation_name: 'Настил',
+  }));
+}
+
+function FieldInput({
+  field,
+  value,
+  onChange,
+  availableColors,
+  }: {
+  field: FieldSchema;
+  value: any;
+  onChange: (value: any) => void;
+  availableColors: Array<{ color: string; rolls: number }>;
+}) {
+  if (field.key === 'nastil_number') {
+    return (
+      <div className="space-y-1.5">
+        <input
+          type="text"
+          value={String(value ?? '')}
+          readOnly
+          className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card2)] px-4 py-3 text-sm font-black outline-none cursor-not-allowed"
+        />
+        <div className="text-[10px] font-semibold text-[var(--text-3)]">
+          Номер призначається автоматично. 1 запис = 1 рулон = 1 настил.
+        </div>
+      </div>
+    );
+  }
+
+  if (field.type === 'boolean') {
+    return (
+      <label className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm text-[var(--text-1)]">
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(event) => onChange(event.target.checked)}
+          className="h-4 w-4 rounded border-[var(--border)]"
+        />
+        <span>{field.placeholder || 'Так / Ні'}</span>
+      </label>
+    );
+  }
+
+  if (field.type === 'select' && field.source === 'batch_colors' && availableColors.length > 0) {
+    return (
+      <select
+        value={String(value ?? '')}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
+      >
+        <option value="">Оберіть значення</option>
+        {availableColors.map((color, index) => (
+          <option key={`${color.color}-${index}`} value={color.color}>
+            {color.color}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (field.type === 'select' && Array.isArray(field.options) && field.options.length > 0) {
+    return (
+      <select
+        value={String(value ?? '')}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
+      >
+        <option value="">Оберіть значення</option>
+        {field.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <input
+      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+      step={
+        field.type === 'number'
+          ? field.key.includes('weight')
+            ? '0.1'
+            : field.key.includes('length')
+              ? '0.01'
+              : '1'
+          : undefined
+      }
+      value={String(value ?? '')}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={field.placeholder || field.label}
+      className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
+    />
+  );
+}
+
+function NastilEntryCard({
+  entry,
+  index,
+  selectedSizes,
+}: {
+  entry: Entry;
+  index: number;
+  selectedSizes: string[];
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  const d = entry.data || {};
+  const nastilNumber = d.nastil_number ?? String(index + 1);
+  const fabricColor = String(d.fabric_color || '—');
+  const qtyPerSize = Number(d.quantity_per_nastil ?? entry.quantity ?? 0);
+  const reelWidth = d.reel_width_cm != null ? Number(d.reel_width_cm) : null;
+  const reelLength = d.reel_length_m != null ? Number(d.reel_length_m) : null;
+  const weightKg = d.weight_kg != null ? Number(d.weight_kg) : null;
+  const remainderKg = d.remainder_kg != null ? Number(d.remainder_kg) : null;
+  const totalQty = qtyPerSize * (selectedSizes.length || 1);
+
+  const recordedAt = entry.recorded_at
+    ? new Date(entry.recorded_at).toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : '—';
+
+  const detailParts = [
+    reelWidth != null ? `${reelWidth} см` : null,
+    reelLength != null ? `${reelLength} м` : null,
+    weightKg != null ? `${weightKg} кг` : null,
+    remainderKg != null ? `залишок ${remainderKg} кг` : null,
+  ].filter(Boolean) as string[];
+
+  const cols = Math.min(selectedSizes.length, 6);
+
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] overflow-hidden">
+      {/* ─── Header ─── */}
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="min-w-0">
+          <div className="text-[9px] font-black uppercase tracking-widest text-emerald-600">
+            Настил
+          </div>
+          <div className="text-xl font-black text-[var(--text-1)]">№{nastilNumber}</div>
+          <div className="mt-0.5 text-xs font-semibold text-[var(--text-2)]">
+            {fabricColor !== '—' ? fabricColor.toLowerCase() : '—'}
+            {qtyPerSize > 0 ? ` · ${qtyPerSize} шт на кожен розмір` : ''}
+          </div>
+        </div>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[var(--text-3)] hover:bg-[var(--bg-card2)]"
+          aria-label={expanded ? 'Згорнути' : 'Розгорнути'}
+        >
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {expanded && (
+        <>
+          {/* ─── Info grid 2×2 ─── */}
+          <div className="border-t border-[var(--border)] grid grid-cols-2">
+            <div className="p-3 border-r border-[var(--border)]">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                Колір тканини
+              </div>
+              <div className="mt-1 text-sm font-black text-[var(--text-1)] uppercase">
+                {fabricColor}
+              </div>
+            </div>
+            <div className="p-3">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                Настил №
+              </div>
+              <div className="mt-1 text-sm font-black text-[var(--text-1)]">{nastilNumber}</div>
+            </div>
+            <div className="p-3 border-t border-r border-[var(--border)]">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                К-сть на розмір
+              </div>
+              <div className="mt-1 text-sm font-black text-[var(--text-1)]">
+                {qtyPerSize > 0 ? `${qtyPerSize} шт` : '—'}
+              </div>
+            </div>
+            <div className="p-3 border-t border-[var(--border)]">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                Час
+              </div>
+              <div className="mt-1 text-[11px] font-semibold text-[var(--text-1)]">
+                {recordedAt}
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Size grid ─── */}
+          {selectedSizes.length > 0 && qtyPerSize > 0 && (
+            <div className="border-t border-[var(--border)] p-4 space-y-3">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                Розмірна сітка замовлення
+              </div>
+              <div
+                className="grid gap-px rounded-xl overflow-hidden border border-[var(--border)]"
+                style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+              >
+                {selectedSizes.slice(0, cols).map((size) => (
+                  <div
+                    key={size}
+                    className="bg-[var(--bg-card)] text-center px-2 py-2"
+                  >
+                    <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)] border-b border-[var(--border)] pb-1 mb-1">
+                      {size}
+                    </div>
+                    <div className="text-sm font-black text-[var(--text-1)]">{qtyPerSize}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs font-semibold text-[var(--text-2)]">
+                Всього по настилу:{' '}
+                <span className="font-black text-[var(--text-1)]">{totalQty} шт</span>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Reel details ─── */}
+          {detailParts.length > 0 && (
+            <div className="border-t border-[var(--border)] p-4">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)] mb-2">
+                Деталі по запису
+              </div>
+              <div className="text-sm font-semibold text-[var(--text-2)]">
+                {detailParts.join(' · ')}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmbroideryQueueCard({
+  nastils,
+  selectedSizes,
+}: {
+  nastils: Entry[];
+  selectedSizes: string[];
+}) {
+  if (nastils.length === 0) return null;
+
+  return (
+    <section className="rounded-[28px] border border-indigo-200 bg-indigo-50/40 p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="rounded-2xl bg-indigo-500/15 p-3 text-indigo-500">
+          <SquarePen className="h-5 w-5" />
+        </div>
+        <div>
+          <div className="text-sm font-black text-[var(--text-1)]">Черга вишивки</div>
+          <div className="text-xs text-[var(--text-3)]">{nastils.length} настилів передано</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {nastils.map((nastil, index) => {
+          const d = nastil.data || {};
+          const nastilNumber = d.nastil_number ?? String(index + 1);
+          const fabricColor = String(d.fabric_color || '—');
+          const embType = d.embroidery_type || '—';
+          const embColor = d.embroidery_color || '—';
+          const qty = Number(d.quantity_per_nastil ?? nastil.quantity ?? 0);
+          const total = qty * (selectedSizes.length || 1);
+          const sentAt = d.embroidery_sent_at
+            ? new Date(d.embroidery_sent_at).toLocaleString('uk-UA', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })
+            : '—';
+
+          return (
+            <div key={String(nastil.id)} className="rounded-2xl border border-indigo-100 bg-white p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Настил</div>
+                  <div className="text-lg font-black text-[var(--text-1)]">№{nastilNumber}</div>
+                  <div className="text-xs font-semibold text-[var(--text-2)]">
+                    {fabricColor !== '—' ? fabricColor.toLowerCase() : '—'}
+                    {qty > 0 ? ` · ${qty} шт на розмір` : ''}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">Всього</div>
+                  <div className="text-lg font-black text-indigo-600 tabular-nums">{total > 0 ? total : qty} шт</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">Тип вишивки</div>
+                  <div className="text-sm font-black text-[var(--text-1)]">{embType}</div>
+                </div>
+                <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">Колір вишивки</div>
+                  <div className="text-sm font-black text-[var(--text-1)]">{embColor}</div>
+                </div>
+              </div>
+
+              {selectedSizes.length > 0 && qty > 0 && (
+                <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                  <div className="grid" style={{ gridTemplateColumns: `repeat(${Math.min(selectedSizes.length, 6)}, 1fr)` }}>
+                    {selectedSizes.slice(0, 6).map((size) => (
+                      <div key={size} className="bg-[var(--bg-card)] text-center px-2 py-2 border-r last:border-r-0 border-[var(--border)]">
+                        <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)] border-b border-[var(--border)] pb-1 mb-1">{size}</div>
+                        <div className="text-sm font-black text-[var(--text-1)]">{qty}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="text-[10px] font-semibold text-[var(--text-3)]">Передано: {sentAt}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function OperationCard({
+  operation,
+  entries,
+  draft,
+  setDraft,
+  onSubmit,
+  availableColors,
+  selectedSizes,
+  legacySizes,
+  saving,
+}: {
+  operation: StageOp;
+  entries: Entry[];
+  draft: Record<string, any>;
+  setDraft: (next: Record<string, any>) => void;
+  onSubmit: () => void;
+  availableColors: Array<{ color: string; rolls: number }>;
+  selectedSizes: string[];
+  legacySizes: Array<[string, number]>;
+  saving: boolean;
+}) {
+  const fields = getFields(operation.field_schema);
+  const ready = isDraftReady(fields, draft);
+
+  return (
+    <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="rounded-2xl bg-emerald-500/15 p-3 text-emerald-500">
+          <SquarePen className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-black text-[var(--text-1)]">{operation.name}</div>
+          <div className="text-xs text-[var(--text-3)]">
+            {operation.code} · {fields.length} полів
+          </div>
+        </div>
+      </div>
+
+      {operation.code === 'nastil' && (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Розмірна сітка</div>
+              <div className="text-sm font-black text-[var(--text-1)]">По партії</div>
+            </div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+              {selectedSizes.length > 0
+                ? `${selectedSizes.length} вибрано`
+                : legacySizes.length > 0
+                  ? 'Старий формат'
+                  : '—'}
+            </div>
+          </div>
+
+          {selectedSizes.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {selectedSizes.map((size) => (
+                <span
+                  key={size}
+                  className="inline-flex items-center rounded-xl bg-white border border-emerald-100 px-3 py-2 text-sm font-black text-slate-800 shadow-sm"
+                >
+                  {size}
+                </span>
+              ))}
+            </div>
+          ) : legacySizes.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {legacySizes
+                .slice()
+                .sort((left, right) => left[0].localeCompare(right[0], 'uk'))
+                .map(([size, qty]) => (
+                  <div
+                    key={size}
+                    className="flex items-center justify-between rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-[var(--text-2)]"
+                  >
+                    <span>{size}</span>
+                    <span>{qty}</span>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="text-sm text-[var(--text-3)]">Розмірна сітка не задана.</div>
+          )}
+        </div>
+      )}
+
+      {fields.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3">
+          {fields.map((field) => (
+            <label key={field.key} className="space-y-1">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                <span>{field.label}</span>
+                {field.required && <span className="text-red-500">*</span>}
+              </div>
+              <FieldInput
+                field={field}
+                value={draft[field.key]}
+                availableColors={availableColors}
+                onChange={(value) =>
+                  setDraft({
+                    ...draft,
+                    [field.key]: value,
+                  })
+                }
+              />
+              {operation.code === 'nastil' && field.key === 'quantity_per_nastil' && (
+                <div className="text-[10px] font-semibold text-[var(--text-3)]">
+                  Вказана кількість розповсюджується на всю розмірну сітку цього настилу.
+                </div>
+              )}
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-base)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
+          Для цієї операції ще не задано схему полів
+        </div>
+      )}
+
+      <button
+        onClick={onSubmit}
+        disabled={saving || !ready}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-4 text-sm font-black text-white disabled:opacity-60"
+      >
+        {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+        Додати запис
+      </button>
+
+      <div className="space-y-2">
+        <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+          Внесені записи: {entries.length}
+        </div>
+
+        {entries.length > 0 ? (
+          <div className="space-y-3">
+            {entries.map((entry, index) =>
+              operation.code === 'nastil' ? (
+                <NastilEntryCard
+                  key={String(entry.id)}
+                  entry={entry}
+                  index={index}
+                  selectedSizes={selectedSizes}
+                />
+              ) : (
+                <div
+                  key={String(entry.id)}
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] p-4 text-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="font-bold text-[var(--text-1)]">
+                      #{index + 1} · {entry.operation_name || operation.name}
+                    </div>
+                    <div className="text-xs font-black text-emerald-500">
+                      {Number(entry.quantity || 0)} шт
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-[var(--text-3)]">
+                    {entry.data &&
+                      typeof entry.data === 'object' &&
+                      Object.entries(entry.data)
+                        .filter(([key]) => key !== 'notes')
+                        .slice(0, 6)
+                        .map(([key, val]) => (
+                          <span key={key}>
+                            {key}: {String(val)}
+                          </span>
+                        ))}
+                  </div>
+                  {entry.notes && (
+                    <div className="mt-2 text-xs text-[var(--text-2)]">{entry.notes}</div>
+                  )}
+                </div>
+              ),
+            )}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-base)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
+            Ще немає записів для цієї операції
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  batchNumber,
+  modelName,
+  entriesCount,
+  quantityTotal,
+  busy,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  batchNumber: string;
+  modelName: string;
+  entriesCount: number;
+  quantityTotal: number;
+  busy: boolean;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 py-4 backdrop-blur-sm sm:items-center">
+      <div className="w-full max-w-md rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <div className="rounded-2xl bg-blue-600/15 p-3 text-blue-600">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-lg font-black text-[var(--text-1)]">Завершити етап?</div>
+            <div className="mt-1 text-sm text-[var(--text-2)]">
+              {batchNumber} · {modelName}
+            </div>
+            <div className="mt-2 text-xs text-[var(--text-3)]">
+              {entriesCount} записів · {quantityTotal} шт
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm font-black text-[var(--text-2)] disabled:opacity-60"
+          >
+            Відміна
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white disabled:opacity-60"
+          >
+            {busy ? 'Збереження...' : 'Так, завершити'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function TaskPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const taskId = Number(params?.id);
+
+  const [data, setData] = useState<TaskResponse | null>(null);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [forms, setForms] = useState<Record<number, Record<string, any>>>({});
+
+  const task = data?.task || null;
+  const batch = data?.batch || task?.batch || firstRelation(task?.production_batches) || null;
+  const stage = useMemo(() => {
+    const raw = firstRelation(task?.stage) || data?.stage || firstRelation(task?.production_stages) || null;
+    if (!raw) return null;
+    return stages.find((item) => item.id === raw.id || item.code === raw.code) || raw;
+  }, [data?.stage, stages, task?.production_stages, task?.stage]);
+
+  const operations: StageOp[] = stage?.operations || data?.stage?.operations || task?.stage?.operations || [];
+  const entries: Entry[] = useMemo(() => {
+    const mapped = normalizeTaskEntries((data?.entries || []) as Entry[], operations);
+    if (mapped.length > 0) return mapped;
+    return normalizeLegacyNastils((data?.legacy_nastils || []) as any[], stage?.id || null);
+  }, [data?.entries, data?.legacy_nastils, operations, stage?.id]);
+
+  const embroideryNastils: Entry[] = useMemo(() => data?.embroidery_nastils || [], [data?.embroidery_nastils]);
+  const isEmbroideryStage = stage?.code === 'embroidery';
+
+  const availableColors = useMemo<ColorOption[]>(() => {
+    const fromApi = data?.available_colors;
+    if (Array.isArray(fromApi) && fromApi.length > 0) {
+      return fromApi
+        .map((item: any) => {
+          if (typeof item === 'string') {
+            return { color: item, rolls: 1 };
+          }
+
+          return {
+            color: String(item?.color || '').trim(),
+            rolls: Number(item?.rolls || 1),
+          };
+        })
+        .filter((item): item is ColorOption => Boolean(item.color));
+    }
+
+    return parseColors(batch?.fabric_color);
+  }, [batch?.fabric_color, data?.available_colors]);
+  const nastilEntriesCount = useMemo(
+    () =>
+      entries.filter((entry) => {
+        const code = String(entry.operation_code || '').toLowerCase();
+        const name = String(entry.operation_name || '').toLowerCase();
+        return code === 'nastil' || name === 'настил';
+      }).length,
+    [entries],
+  );
+  const nextNastilColor = useMemo(
+    () => availableColors[nastilEntriesCount]?.color || availableColors[0]?.color || '',
+    [availableColors, nastilEntriesCount],
+  );
+  const selectedSizes = useMemo(() => parseSizes(batch?.size_variants), [batch?.size_variants]);
+  const legacySizes = useMemo(() => parseLegacySizes(batch?.size_variants), [batch?.size_variants]);
+
+  const entriesByOperation = useMemo(() => {
+    const map = new Map<string, Entry[]>();
+
+    entries.forEach((entry) => {
+      const key = entry.operation_id ? `id:${entry.operation_id}` : `code:${entry.operation_code || 'legacy'}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(entry);
+    });
+
+    return map;
+  }, [entries]);
+
+  const summaryQuantity = data?.summary?.quantity || entries.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+  const nextNastilNumber = useMemo(() => {
+    const nastilCount = entries.filter((entry) => {
+      const code = String(entry.operation_code || '').toLowerCase();
+      const name = String(entry.operation_name || '').toLowerCase();
+      return code === 'nastil' || name === 'настил';
+    }).length;
+
+    return String(nastilCount + 1);
+  }, [entries]);
+  const isPending = task?.status === 'pending';
+  const isActive = task?.status === 'accepted' || task?.status === 'in_progress';
+  const isCompleted = task?.status === 'completed';
+
+  const load = async () => {
+    if (!Number.isFinite(taskId)) {
+      setErr('Некоректний ідентифікатор завдання');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setErr('');
+
+    try {
+      const [taskRes, stagesRes] = await Promise.all([
+        fetch(`/api/mobile/tasks/${taskId}`, { cache: 'no-store' }),
+        fetch('/api/mobile/stages', { cache: 'no-store' }),
+      ]);
+
+      const taskJson = await taskRes.json();
+      const stagesJson = await stagesRes.json();
+
+      if (!taskRes.ok) throw new Error(taskJson.error || 'Не вдалося завантажити завдання');
+      if (!stagesRes.ok) throw new Error(stagesJson.error || 'Не вдалося завантажити етапи');
+
+      setData(taskJson as TaskResponse);
+      setStages(Array.isArray(stagesJson) ? stagesJson : []);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Не вдалося завантажити завдання');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
+  useEffect(() => {
+    if (!operations.length || !availableColors.length) return;
+
+    setForms((current) => {
+      const next = { ...current };
+
+      operations.forEach((operation) => {
+        if (!next[operation.id]) {
+          next[operation.id] = createDraft(
+            operation.field_schema || [],
+            operation.code === 'nastil' ? nextNastilColor : '',
+            operation.code === 'nastil' ? nextNastilNumber : '',
+          );
+        }
+      });
+
+      return next;
+    });
+  }, [availableColors, nextNastilNumber, operations]);
+
+  const acceptTask = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/mobile/tasks/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'accept' }),
+      });
+
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Не вдалося прийняти завдання');
+      await load();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Не вдалося прийняти завдання');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeTask = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/mobile/tasks/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete' }),
+      });
+
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Не вдалося завершити завдання');
+      setConfirmOpen(false);
+      await load();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Не вдалося завершити завдання');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addEntry = async (operation: StageOp) => {
+    setSaving(true);
+
+    try {
+      const draft = forms[operation.id] || {};
+      const response = await fetch(`/api/mobile/tasks/${taskId}/entries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operation_id: operation.id,
+          data: draft,
+          notes: typeof draft.notes === 'string' ? draft.notes : null,
+        }),
+      });
+
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Не вдалося зберегти запис');
+
+      setForms((current) => ({
+        ...current,
+        [operation.id]: createDraft(
+          operation.field_schema || [],
+          operation.code === 'nastil' ? nextNastilColor : '',
+          operation.code === 'nastil' ? nextNastilNumber : '',
+        ),
+      }));
+
+      await load();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Не вдалося зберегти запис');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+      </div>
+    );
+  }
+
+  if (err && !data) {
+    return (
+      <div className="px-4 py-5">
+        <button
+          onClick={() => router.back()}
+          className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-[var(--text-3)]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Назад
+        </button>
+        <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+          {err}
+        </div>
+      </div>
+    );
+  }
+
+  const batchNumber = batch?.batch_number || `#${task?.batch_id}`;
+  const modelName = batch?.product_models?.name || 'Без моделі';
+
+  return (
+    <div className="px-4 py-5 pb-24 space-y-5">
+      <button
+        onClick={() => router.back()}
+        className="inline-flex items-center gap-2 text-xs font-bold text-[var(--text-3)]"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Назад
+      </button>
+
+      {err && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+          {err}
+        </div>
+      )}
+
+      <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
+              Партія
+            </div>
+            <h1 className="mt-1 text-2xl font-black text-[var(--text-1)]">{batchNumber}</h1>
+            <div className="mt-1 text-sm font-semibold text-[var(--text-2)]">
+              {modelName}
+              {batch?.product_models?.sku ? ` · ${batch.product_models.sku}` : ''}
+            </div>
+            <div className="mt-2 text-xs font-semibold text-[var(--text-3)]">
+              Етап: {stage?.name || 'Невідомий'}
+              {stage?.code ? ` · ${stage.code}` : ''}
+            </div>
+          </div>
+          <div
+            className={clsx(
+              'rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest',
+              isPending
+                ? 'bg-amber-500/15 text-amber-500'
+                : isActive
+                  ? 'bg-emerald-500/15 text-emerald-500'
+                  : 'bg-blue-500/15 text-blue-500',
+            )}
+          >
+            {isPending ? 'Очікує' : isActive ? 'В роботі' : 'Завершено'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-2)]">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] p-3">
+            <div className="font-black uppercase tracking-widest text-[10px] text-[var(--text-3)]">
+              Тканина
+            </div>
+            <div className="mt-1 font-semibold text-[var(--text-1)]">
+              {batch?.fabric_type || '—'}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] p-3">
+            <div className="font-black uppercase tracking-widest text-[10px] text-[var(--text-3)]">
+              Кількість
+            </div>
+            <div className="mt-1 font-semibold text-[var(--text-1)]">
+              {batch?.quantity || 0} шт
+            </div>
+          </div>
+        </div>
+
+        {availableColors.length > 0 && (
+          <div>
+            <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+              Кольори тканини
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {availableColors.map((color, index) => (
+                <span
+                  key={`${color.color}-${index}`}
+                  className="rounded-full border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-xs font-bold text-[var(--text-2)]"
+                >
+                  {color.color}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+              Розміри
+            </div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+              {selectedSizes.length > 0
+                ? `${selectedSizes.length} вибрано`
+                : legacySizes.length > 0
+                  ? 'Старий формат'
+                  : '—'}
+            </div>
+          </div>
+
+          {selectedSizes.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {selectedSizes.map((size) => (
+                <span
+                  key={size}
+                  className="rounded-full border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-xs font-bold text-[var(--text-2)]"
+                >
+                  {size}
+                </span>
+              ))}
+            </div>
+          ) : legacySizes.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {legacySizes.map(([size, qty]) => (
+                <div
+                  key={size}
+                  className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-xs font-bold text-[var(--text-2)]"
+                >
+                  <span>{size}</span>
+                  <span>{qty}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-[var(--text-3)]">—</div>
+          )}
+        </div>
+
+        {batch?.notes && (
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-800">
+            {batch.notes}
+          </div>
+        )}
+      </section>
+
+      {isPending && (
+        <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-amber-500/15 p-3 text-amber-500">
+              <Scissors className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-sm font-black text-[var(--text-1)]">
+                Потрібно прийняти завдання
+              </div>
+              <div className="text-xs text-[var(--text-3)]">
+                Після прийняття відкриється робоче вікно з операціями
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={acceptTask}
+            disabled={busy}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-4 text-sm font-black text-white disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
+            Прийняти в роботу
+          </button>
+        </section>
+      )}
+
+      {isActive && (
+        <section className="space-y-4">
+          <div className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
+                  Прогрес
+                </div>
+                <div className="mt-1 text-sm font-semibold text-[var(--text-1)]">
+                  {isEmbroideryStage
+                    ? `${embroideryNastils.length} настилів у черзі`
+                    : `${entries.length} записів · ${summaryQuantity} шт`}
+                </div>
+              </div>
+              <div className="rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs font-black text-emerald-500">
+                {batch?.quantity || 0} план
+              </div>
+            </div>
+          </div>
+
+          {isEmbroideryStage ? (
+            <EmbroideryQueueCard nastils={embroideryNastils} selectedSizes={selectedSizes} />
+          ) : operations.length > 0 ? (
+            operations.map((operation) => {
+              const operationDraft =
+                forms[operation.id] ||
+                createDraft(
+                  operation.field_schema || [],
+                  operation.code === 'nastil' ? nextNastilColor : '',
+                  operation.code === 'nastil' ? nextNastilNumber : '',
+                );
+                const operationEntries =
+                  entriesByOperation.get(`id:${operation.id}`) ||
+                  entriesByOperation.get(`code:${operation.code}`) ||
+                  [];
+
+              return (
+                <OperationCard
+                  key={operation.id}
+                  operation={operation}
+                  entries={operationEntries}
+                  draft={operationDraft}
+                  setDraft={(next) =>
+                    setForms((current) => ({
+                      ...current,
+                      [operation.id]: next,
+                    }))
+                  }
+                  onSubmit={() => addEntry(operation)}
+                  availableColors={availableColors}
+                  selectedSizes={selectedSizes}
+                  legacySizes={legacySizes}
+                  saving={saving}
+                />
+              );
+            })
+          ) : (
+            <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 text-center text-sm text-[var(--text-3)]">
+              <Package2 className="mx-auto mb-2 h-10 w-10 opacity-30" />
+              Для цього етапу ще не налаштовані операції
+            </section>
+          )}
+
+          <button
+            onClick={() => setConfirmOpen(true)}
+            disabled={busy || (isEmbroideryStage ? embroideryNastils.length === 0 : entries.length === 0)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
+            Завершити вишивку
+          </button>
+        </section>
+      )}
+
+      {isCompleted && (
+        <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-6 text-center">
+          <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-emerald-500" />
+          <div className="text-lg font-black text-[var(--text-1)]">Етап завершено</div>
+          <div className="mt-1 text-sm text-[var(--text-2)]">
+            {batchNumber} · {modelName}
+          </div>
+          <div className="mt-4 flex items-center justify-center gap-4 text-sm font-bold text-[var(--text-1)]">
+            <span>{entries.length} записів</span>
+            <span>•</span>
+            <span>{summaryQuantity} шт</span>
+          </div>
+        </section>
+      )}
+
+      {err && !data && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+          {err}
+        </div>
+      )}
+
+      <div className="h-4" />
+
+      <ConfirmModal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={completeTask}
+        batchNumber={batchNumber}
+        modelName={modelName}
+        entriesCount={entries.length}
+        quantityTotal={summaryQuantity}
+        busy={busy}
+      />
+    </div>
+  );
+}

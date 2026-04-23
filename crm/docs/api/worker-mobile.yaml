@@ -1,0 +1,570 @@
+openapi: 3.0.3
+info:
+  title: Shveyka Worker Mobile API
+  version: 1.0.0
+  description: >
+    API мобільного додатку для працівників цеху.
+    Забезпечує виконання завдань, фіксацію виробітку, підтвердження майстром.
+servers:
+  - url: /api
+
+security:
+  - WorkerCookieAuth: []
+
+paths:
+  # ─── Auth ───
+  /mobile/auth/login:
+    post:
+      tags: [Auth]
+      summary: Вхід працівника
+      description: |
+        Аутентифікація працівника за табельним номером + PIN + пароль.
+        Перевіряє `shveyka.employees` (active) та `shveyka.users` (hashed_pin, hashed_password).
+        При успіху — JWT cookie `mes_worker_token` (30 днів).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employee_number, pin, password]
+              properties:
+                employee_number:
+                  type: string
+                  description: Табельний номер працівника
+                pin:
+                  type: string
+                  description: PIN-код (bcrypt перевірка)
+                password:
+                  type: string
+                  description: Пароль (bcrypt перевірка)
+      responses:
+        '200':
+          description: Успішний вхід
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: JWT cookie `mes_worker_token`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  role: { type: string }
+                  employee:
+                    $ref: '#/components/schemas/Employee'
+        '401':
+          description: Невірний номер/PIN/пароль або працівник неактивний
+
+  /mobile/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Вихід працівника
+      responses:
+        '200':
+          description: Cookie очищено
+
+  /mobile/auth/me:
+    get:
+      tags: [Auth]
+      summary: Поточна сесія працівника
+      responses:
+        '200':
+          description: Дані сесії
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      userId: { type: integer }
+                      username: { type: string }
+                      role: { type: string }
+                      employeeId: { type: integer, nullable: true }
+                  employee:
+                    $ref: '#/components/schemas/Employee'
+
+  # ─── Tasks ───
+  /mobile/tasks:
+    get:
+      tags: [Tasks]
+      summary: Список завдань працівника
+      description: |
+        Повертає завдання (`batch_tasks`), відфільтровані по `assigned_role` працівника.
+        Показує тільки завдання зі статусами: pending, accepted, in_progress.
+      responses:
+        '200':
+          description: Список завдань
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BatchTask'
+
+  /mobile/tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Деталі завдання
+      description: |
+        Повна інформація про завдання: batch, stage, operations, entries.
+        Використовується для відображення форми виконання.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Деталі завдання
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/BatchTask'
+                  batch:
+                    $ref: '#/components/schemas/ProductionBatch'
+                  stage:
+                    $ref: '#/components/schemas/ProductionStage'
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskEntry'
+                  legacy_nastils:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CuttingNastil'
+                  display_entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaskEntry'
+                  available_colors:
+                    type: array
+                    items: { type: string }
+                  summary:
+                    type: object
+                    properties:
+                      entries: { type: integer }
+                      quantity: { type: integer }
+    post:
+      tags: [Tasks]
+      summary: Оновити стан завдання
+      description: |
+        Дії: accept (прийняти), start (почати), complete (завершити), cancel (скасувати).
+        При complete — перевіряє що всі записи внесені.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [accept, start, complete, cancel]
+                notes: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Завдання оновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: '#/components/schemas/BatchTask'
+
+  /mobile/tasks/{id}/entries:
+    post:
+      tags: [Entries]
+      summary: Додати запис виконання
+      description: |
+        Створює запис в `shveyka.task_entries`.
+        Для cutting — також дублює в `cutting_nastils` (legacy).
+        Дані форми зберігаються в `task_entries.data` (JSONB) згідно `field_schema` операції.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskEntryCreateRequest'
+      responses:
+        '200':
+          description: Запис створено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry:
+                    $ref: '#/components/schemas/TaskEntry'
+                  legacy_nastil:
+                    allOf:
+                      - $ref: '#/components/schemas/CuttingNastil'
+                    nullable: true
+                    description: Заповнюється тільки для cutting stage
+
+  /mobile/tasks/{id}/nastils:
+    get:
+      tags: [Entries]
+      summary: Список настилів завдання
+      description: Тільки для cutting stage. Legacy endpoint.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Список настилів
+    post:
+      tags: [Entries]
+      summary: Додати рулон до розкрою
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CuttingNastilCreateRequest'
+      responses:
+        '200':
+          description: Настил створено
+
+  # ─── Stages ───
+  /mobile/stages:
+    get:
+      tags: [Tasks]
+      summary: Довідник етапів
+      description: Повертає `shveyka.production_stages` з вкладеними `stage_operations`.
+      parameters:
+        - in: query
+          name: code
+          schema: { type: string }
+          description: Фільтр по коду етапу
+        - in: query
+          name: include_inactive
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Список етапів з операціями
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductionStageWithOperations'
+
+  # ─── Batches (Worker View) ───
+  /mobile/batches:
+    get:
+      tags: [Batches]
+      summary: Список партій (worker view)
+      responses:
+        '200':
+          description: Список партій
+
+  /mobile/batches/{id}:
+    get:
+      tags: [Batches]
+      summary: Деталі партії
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Партія
+
+  /mobile/batches/{id}/pipeline:
+    get:
+      tags: [Batches]
+      summary: Pipeline партії
+      description: Поточний статус всіх етапів партії.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Pipeline snapshot
+
+  /mobile/batches/{id}/route-card:
+    get:
+      tags: [Batches]
+      summary: Маршрутна карта партії
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Маршрутна карта
+
+  /mobile/batches/{id}/cutting-summary:
+    get:
+      tags: [Batches]
+      summary: Зведена інформація по розкрою
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Cutting summary
+
+  # ─── Master ───
+  /mobile/master/pending:
+    get:
+      tags: [Master]
+      summary: Завдання на підтвердження
+      description: Записи, які очікують підтвердження майстром.
+      responses:
+        '200':
+          description: Список очікуючих записів
+
+  /mobile/master/approve:
+    post:
+      tags: [Master]
+      summary: Підтвердити запис працівника
+      description: |
+        Підтвердження запису = дозвіл перейти на наступний етап.
+        Після підтвердження всіх записів етапу — партія готова до advance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entry_id: { type: integer }
+                task_id: { type: integer }
+                approved: { type: boolean }
+                notes: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Підтверджено
+
+  # ─── Config / Utility ───
+  /mobile/employees:
+    get:
+      tags: [Config]
+      summary: Список працівників (для login screen)
+      responses:
+        '200':
+          description: Список працівників
+
+  /mobile/config:
+    get:
+      tags: [Config]
+      summary: Конфігурація додатку
+      responses:
+        '200':
+          description: Runtime config
+
+  /mobile/sync:
+    post:
+      tags: [Sync]
+      summary: Синхронізація офлайн-даних
+      description: Працівник може працювати офлайн. Цей endpoint приймає накопичені записи.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: Результат синхронізації
+
+  /mobile/defect:
+    post:
+      tags: [Defects]
+      summary: Повідомити про дефект
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                batch_id: { type: integer }
+                operation_id: { type: integer }
+                employee_id: { type: integer }
+                quantity: { type: integer }
+                severity: { type: string }
+                description: { type: string }
+                photo_url: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Дефект зафіксовано
+
+  /ping:
+    get:
+      tags: [Config]
+      summary: Health check
+      responses:
+        '200':
+          description: Pong
+
+  /seed:
+    get:
+      tags: [Config]
+      summary: Seed helper (тільки dev)
+      responses:
+        '200':
+          description: Seed status
+
+components:
+  securitySchemes:
+    WorkerCookieAuth:
+      type: apiKey
+      in: cookie
+      name: mes_worker_token
+
+  schemas:
+    Employee:
+      type: object
+      properties:
+        id: { type: integer }
+        full_name: { type: string }
+        employee_number: { type: string, nullable: true }
+        department: { type: string, nullable: true }
+        position: { type: string, nullable: true }
+        status: { type: string }
+
+    BatchTask:
+      type: object
+      properties:
+        id: { type: integer }
+        batch_id: { type: integer }
+        stage_id: { type: integer }
+        task_type: { type: string }
+        assigned_role: { type: string }
+        status: { type: string, enum: [pending, accepted, in_progress, completed, cancelled] }
+        launched_at: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+
+    ProductionBatch:
+      type: object
+      properties:
+        id: { type: integer }
+        batch_number: { type: string }
+        product_model_id: { type: integer }
+        quantity: { type: integer }
+        status: { type: string }
+        fabric_type: { type: string, nullable: true }
+        fabric_color: { type: string, nullable: true }
+        size_variants: { type: object, nullable: true }
+
+    ProductionStage:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        assigned_role: { type: string }
+        sequence_order: { type: integer }
+        color: { type: string }
+        is_active: { type: boolean }
+
+    ProductionStageWithOperations:
+      allOf:
+        - $ref: '#/components/schemas/ProductionStage'
+        - type: object
+          properties:
+            operations:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: integer }
+                  code: { type: string }
+                  name: { type: string }
+                  field_schema:
+                    type: array
+                    items:
+                      type: object
+                      description: "JSON-схема форми працівника (key, label, type, required)"
+                  sort_order: { type: integer }
+
+    TaskEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        task_id: { type: integer }
+        batch_id: { type: integer }
+        employee_id: { type: integer }
+        stage_id: { type: integer }
+        operation_id: { type: integer, nullable: true }
+        entry_number: { type: integer }
+        quantity: { type: integer, nullable: true }
+        data: { type: object, description: "JSON з даними форми працівника" }
+        notes: { type: string, nullable: true }
+        recorded_at: { type: string, format: date-time }
+
+    TaskEntryCreateRequest:
+      type: object
+      required: [batch_id, operation_id, quantity]
+      properties:
+        batch_id: { type: integer }
+        operation_id: { type: integer }
+        quantity: { type: integer, description: "Виконана кількість" }
+        defect_quantity: { type: integer, default: 0, description: "Кількість браку" }
+        metric_value: { type: number, default: 0 }
+        size: { type: string, nullable: true, description: "Розмір (для операцій з розмірами)" }
+        notes: { type: string, nullable: true }
+        local_id: { type: string, nullable: true, description: "ID для офлайн-синхронізації" }
+        status: { type: string, description: "Статус запису" }
+        data: { type: object, description: "Дані форми згідно field_schema" }
+
+    CuttingNastil:
+      type: object
+      additionalProperties: true
+
+    CuttingNastilCreateRequest:
+      type: object
+      required: [nastil_number, reel_width_cm, reel_length_m, fabric_color, weight_kg, quantity_per_nastil, remainder_kg]
+      properties:
+        nastil_number: { type: string }
+        reel_width_cm: { type: number }
+        reel_length_m: { type: number }
+        fabric_color: { type: string }
+        weight_kg: { type: number }
+        quantity_per_nastil: { type: integer }
+        remainder_kg: { type: number }
+        notes: { type: string, nullable: true }
+
+    SyncRequest:
+      type: object
+      description: "Пакет офлайн-записів для синхронізації"
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskEntryCreateRequest'
+        last_sync_at: { type: string, format: date-time, nullable: true }

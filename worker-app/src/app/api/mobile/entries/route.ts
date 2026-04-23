@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
 import { z } from 'zod';
+import { checkRateLimit, getRateLimitId, createRateLimitHeaders } from '@/lib/rate-limit';
+import { createRequestLogger } from '@/lib/logger';
 
 interface EntryRow { quantity: number }
 
@@ -46,9 +48,25 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const logger = createRequestLogger(request, { action: 'create_entry' });
+  
   try {
     const user = await getCurrentUser(request);
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const rateLimitId = getRateLimitId(request, user.employeeId);
+    const rateLimit = await checkRateLimit('entries', rateLimitId);
+    
+    if (!rateLimit.allowed) {
+      logger.warn('Entries rate limited', { employeeId: user.employeeId, retryAfter: rateLimit.retryAfter });
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait.' },
+        { 
+          status: 429,
+          headers: createRateLimitHeaders(rateLimit),
+        }
+      );
+    }
 
     const json = await request.json();
     const result = EntrySchema.safeParse(json);
@@ -233,7 +251,7 @@ export async function POST(request: Request) {
               else if (operation_id === 13) nextStatus = 'embroidery';
               else if (operation_id === 9) nextStatus = 'overlock';
               else if (operation_id === 14) nextStatus = 'straight_stitch';
-              else if (operation_id === 15) nextStatus = 'flatlock';
+              else if (operation_id === 15) nextStatus = 'coverlock';
               else if (operation_id === 12) {
                 const { data: entries } = await shveykaClient
                   .from('operation_entries')
@@ -301,6 +319,7 @@ export async function POST(request: Request) {
     if (batch?.route_card_id && result.data.status === 'approved') {
       const { data: rcoData } = await shveykaClient.from('route_card_operations').select('batch_status_on_confirm').eq('route_card_id', batch.route_card_id).eq('operation_id', operation_id).single();
       batchStatusOnConfirm = rcoData?.batch_status_on_confirm || null;
+      if (batchStatusOnConfirm === 'flatlock') batchStatusOnConfirm = 'coverlock';
     }
 
     const { data, error } = await shveykaClient
@@ -336,7 +355,11 @@ export async function POST(request: Request) {
             const { data: routeOp } = await shveykaClient.from('route_card_operations').select('custom_rate, batch_status_on_confirm').eq('route_card_id', routeCardId).eq('operation_id', entryDetails.operation_id).maybeSingle();
             if (routeOp) {
               if (routeOp.custom_rate !== null) rate = routeOp.custom_rate;
-              if (routeOp.batch_status_on_confirm) batchStatusOnConfirm = routeOp.batch_status_on_confirm;
+              if (routeOp.batch_status_on_confirm) {
+                batchStatusOnConfirm = routeOp.batch_status_on_confirm === 'flatlock'
+                  ? 'coverlock'
+                  : routeOp.batch_status_on_confirm;
+              }
             }
           }
           const amount = (entryDetails.quantity || 0) * rate;
@@ -364,7 +387,7 @@ export async function POST(request: Request) {
             else if (operation_id === 13) nextStatus = 'embroidery';
             else if (operation_id === 9) nextStatus = 'overlock';
             else if (operation_id === 14) nextStatus = 'straight_stitch';
-            else if (operation_id === 15) nextStatus = 'flatlock';
+            else if (operation_id === 15) nextStatus = 'coverlock';
             else if (operation_id === 12) {
               const { data: entries } = await shveykaClient.from('operation_entries').select('quantity').eq('production_batch_id', batch_id).eq('operation_id', 12).eq('status', 'approved');
               const totalPacked = (entries as any[] || []).reduce((s, e) => s + (e.quantity || 0), 0);

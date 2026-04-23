@@ -1,64 +1,376 @@
 openapi: 3.0.0
 info:
-  title: Shveika AI Assistant API
-  description: API для взаимодействия с интеллектуальным помощником производства "Швейка" (v2).
-  version: 2.0.0
+  title: Shveyka AI Assistant API v2.1
+  description: |
+    API для взаимодействия с интеллектуальным помощником производства "Швейка".
+
+    ## Особенности v2.1:
+    - Role-based access control (RBAC) через PolicyGuard
+    - Audit logging всех операций
+    - Tool-based execution с citations
+    - Поддержка множественных AI провайдеров (OpenRouter, Groq, HuggingFace)
+
+    ## Роли и права:
+    - **worker** - базовый доступ к знаниям и своей зарплате
+    - **master** - доступ к заказам, блокировкам, ожидающим записям
+    - **manager** - полный доступ к аналитике и payroll impact
+    - **accountant** - доступ к финансовой аналитике
+  version: 2.1.0
+  contact:
+    name: Shveyka Development
+    url: https://shveyka.online
+
 servers:
   - url: /api/ai
-    description: Локальный сервер разработки
+    description: MES Shveyka API
+
+tags:
+  - name: assistant
+    description: Интерактивный AI ассистент
+  - name: explain
+    description: Специализированные объяснения
+  - name: knowledge
+    description: Работа с базой знаний
 
 paths:
   /assistant:
-    post:
-      summary: Получить инсайты или ответ на вопрос от ИИ-ассистента
-      operationId: askAssistant
+    get:
+      summary: GET запросы к AI ассистенту
+      description: |
+        Получение инсайтов, объяснений статусов, поиск по базе знаний.
+
+        Требует авторизацию через JWT токен в cookie или Authorization header.
+      operationId: getAssistantData
+      tags:
+        - assistant
+      security:
+        - bearerAuth: []
       parameters:
+        - name: action
+          in: query
+          description: Действие ассистента
+          required: false
+          schema:
+            type: string
+            enum:
+              - explain-order
+              - explain-payroll
+              - get-sop
+              - search
+              - insights
         - name: mode
           in: query
-          description: Режим работы (classic или agentic)
+          description: Режим работы
           schema:
             type: string
             enum: [classic, agentic]
             default: classic
+        - name: orderId
+          in: query
+          description: ID заказа (для action=explain-order)
+          schema:
+            type: integer
+          example: 123
+        - name: employeeId
+          in: query
+          description: ID сотрудника (для action=explain-payroll)
+          schema:
+            type: integer
+          example: 45
+        - name: periodId
+          in: query
+          description: ID периода (для action=explain-payroll)
+          schema:
+            type: integer
+          example: 12
+        - name: sop
+          in: query
+          description: Имя SOP файла (для action=get-sop)
+          schema:
+            type: string
+          example: cutting-standard
+        - name: q
+          in: query
+          description: Поисковый запрос (для action=search)
+          schema:
+            type: string
+          example: как оформить брак
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIResponse'
+              examples:
+                explain-order:
+                  summary: Объяснение статуса заказа
+                  value:
+                    explanation: "Заказ #123 находится в статусе 'cutting'..."
+                    version: "2.1.0"
+                    role: "manager"
+                insights:
+                  summary: AI инсайты
+                  value:
+                    insights: "## KPI Anomalies\n\n1. Выработка на швею снизилась на 15%..."
+                    version: "2.0.0-agentic"
+                    role: "manager"
+                search:
+                  summary: Поиск по базе знаний
+                  value:
+                    results:
+                      - id: "1"
+                        source_path: "sop/quality-control.md"
+                        title: "Контроль качества"
+                        content: "При обнаружении брака..."
+                        rank: 0.95
+                    version: "2.1.0"
+                    role: "worker"
+        '401':
+          description: Unauthorized - отсутствует или невалидный токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Чат с AI ассистентом
+      description: |
+        Отправка сообщения ассистенту и получение ответа.
+
+        Поддерживает два режима:
+        - **classic** - простой запрос к AI без инструментов
+        - **agentic** - использование инструментов для получения данных,
+          с проверкой прав доступа и аудитом
+
+      operationId: chatWithAssistant
+      tags:
+        - assistant
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required:
+                - question
               properties:
-                message:
+                question:
                   type: string
-                  description: Сообщение или вопрос пользователя
+                  description: Вопрос пользователя
+                  minLength: 1
+                  maxLength: 2000
+                  example: "Сколько заказов в статусе cutting?"
                 history:
                   type: array
+                  description: История сообщений для контекста
                   items:
-                    type: object
-                    properties:
-                      role:
-                        type: string
-                        enum: [user, model]
-                      content:
-                        type: string
-                context_type:
+                    $ref: '#/components/schemas/ChatMessage'
+                mode:
                   type: string
-                  enum: [production, inventory, general]
-                  default: production
+                  enum: [classic, agentic]
+                  default: classic
+                  description: |
+                    - classic: простой AI запрос
+                    - agentic: с использованием инструментов и RBAC
+                action:
+                  type: string
+                  enum: [explain-order, explain-payroll]
+                  description: Специфичное действие (переопределяет mode)
+                orderId:
+                  type: integer
+                  description: ID заказа для action=explain-order
+                employeeId:
+                  type: integer
+                  description: ID сотрудника для action=explain-payroll
+                periodId:
+                  type: integer
+                  description: ID периода для action=explain-payroll
       responses:
         '200':
-          description: Успешный ответ от ИИ
+          description: Ответ ассистента
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  text:
-                    type: string
-                    description: Текстовый ответ ассистента в формате v2 (3-30-300)
-                  version:
-                    type: string
-                    example: "2.0.0-agentic"
+                $ref: '#/components/schemas/ChatResponse'
+              examples:
+                agentic-chat:
+                  summary: Agentic режим с citations
+                  value:
+                    answer: "По вашим данным, заказ #123 готов на 75%..."
+                    citations:
+                      - source: "production_orders"
+                        id: 123
+                        field: "status"
+                    version: "2.0.0-agentic"
+                    role: "manager"
+                classic-chat:
+                  summary: Classic режим
+                  value:
+                    answer: "В текущий момент в статусе cutting находится 5 заказов..."
+                    version: "1.0.0-classic"
+        '400':
+          description: Bad Request - отсутствует question
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
-          description: Ошибка авторизации
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          description: Внутренняя ошибка сервера (ошибка Gemini или Supabase)
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT токен из cookie или Authorization header
+
+  schemas:
+    AIResponse:
+      type: object
+      properties:
+        explanation:
+          type: string
+          description: Объяснение (для action=explain-order, explain-payroll)
+        insights:
+          type: string
+          description: AI инсайты (для mode=agentic)
+        results:
+          type: array
+          description: Результаты поиска (для action=search)
+          items:
+            $ref: '#/components/schemas/KnowledgeResult'
+        content:
+          type: string
+          description: Содержимое SOP (для action=get-sop)
+        version:
+          type: string
+          description: Версия API
+          example: "2.1.0"
+        role:
+          type: string
+          description: Роль пользователя для PolicyGuard
+          example: "manager"
+
+    ChatResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: Ответ ассистента
+        citations:
+          type: array
+          description: Ссылки на источники данных (только agentic mode)
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+                description: Таблица или источник данных
+                example: "production_orders"
+              id:
+                type: integer
+                description: ID записи
+                example: 123
+              field:
+                type: string
+                description: Поле или аспект
+                example: "status"
+        version:
+          type: string
+          example: "2.0.0-agentic"
+        role:
+          type: string
+          example: "manager"
+
+    ChatMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+          description: Роль отправителя
+        content:
+          type: string
+          description: Текст сообщения
+
+    KnowledgeResult:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Уникальный ID чанка
+        source_path:
+          type: string
+          description: Путь к источнику
+          example: "sop/quality-control.md"
+        title:
+          type: string
+          nullable: true
+          description: Заголовок чанка
+        content:
+          type: string
+          description: Текстовое содержимое
+        metadata:
+          type: object
+          description: Метаданные чанка
+        rank:
+          type: number
+          format: float
+          description: Релевантность (0-1)
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+        details:
+          type: string
+          nullable: true
+          description: Детали ошибки (только в development mode)
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Unauthorized"
+
+    InternalError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Ошибка при получении инсайтов"
+              details:
+                type: string
+                example: "Connection timeout"

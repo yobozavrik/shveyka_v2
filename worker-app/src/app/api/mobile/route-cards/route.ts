@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
 
+const MASTER_POSITIONS = ['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир', 'менеджер'];
+
 export async function GET(request: Request) {
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,9 +22,7 @@ export async function GET(request: Request) {
     
     if (emp) {
       const pos = (emp.position || '').toLowerCase();
-      const name = (emp.full_name || '').toLowerCase();
-      if (['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир', 'менеджер'].includes(pos) || 
-          name.includes('марина коваль')) {
+      if (MASTER_POSITIONS.some(p => pos.includes(p))) {
         isPrivileged = true;
       }
     }

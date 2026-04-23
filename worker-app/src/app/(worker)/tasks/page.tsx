@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ClipboardList, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
-import { clsx } from 'clsx';
+import clsx from 'clsx';
 
 type TaskListItem = {
   id: number;
@@ -26,36 +25,141 @@ type TaskListItem = {
   } | null;
 };
 
-function parseFabricColors(value?: string | null) {
-  if (!value) return [] as { color: string; rolls: number }[];
-  return value
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const match = part.match(/^(.*?)(?:\s*\((\d+)\))?$/);
-      return {
-        color: match?.[1]?.trim() || part,
-        rolls: Number(match?.[2] || 1),
-      };
-    });
+function formatDate(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('uk-UA', {
+    day: 'numeric',
+    month: 'short',
+  }).format(date);
+}
+
+function statusUi(status: string) {
+  if (status === 'pending') {
+    return {
+      label: 'Очікує',
+      badge: 'bg-amber-100 text-amber-800',
+      progressText: 'text-slate-400',
+      progressBar: 'bg-slate-300',
+    };
+  }
+
+  if (status === 'completed') {
+    return {
+      label: 'Готово',
+      badge: 'bg-emerald-100 text-emerald-800',
+      progressText: 'text-primary',
+      progressBar: 'bg-gradient-to-r from-primary to-primary-container',
+    };
+  }
+
+  return {
+    label: 'В роботі',
+    badge: 'bg-secondary-container text-on-secondary-container',
+    progressText: 'text-primary',
+    progressBar: 'bg-gradient-to-r from-primary to-primary-container',
+  };
+}
+
+function TaskCard({ task }: { task: TaskListItem }) {
+  const router = useRouter();
+  const batch = task.batch;
+  const percent = batch?.quantity ? Math.min(100, Math.round((task.summary.quantity / batch.quantity) * 100)) : 0;
+  const ui = statusUi(task.status);
+
+  return (
+    <button
+      type="button"
+      onClick={() => router.push(`/tasks/${task.id}`)}
+      className={clsx(
+        'group w-full cursor-pointer rounded-[20px] bg-surface-container-lowest p-5 text-left transition-all active:scale-[0.98]',
+        task.status !== 'pending' && 'border-l-4 border-primary',
+      )}
+    >
+      <div className="mb-4 flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <span className={clsx('inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider', ui.badge)}>
+            {ui.label}
+          </span>
+          <span className="font-mono text-sm text-slate-400">
+            {batch?.batch_number || `П-${task.batch_id}`}
+          </span>
+        </div>
+        <span className="material-symbols-outlined text-slate-300 transition-transform group-hover:translate-x-1">
+          arrow_forward
+        </span>
+      </div>
+
+      <h3 className="mb-2 text-[24px] font-black leading-tight text-on-surface">
+        {batch?.product_models?.name || 'Без моделі'}
+      </h3>
+
+      <div className="mb-5 flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex items-center gap-1 text-sm font-medium text-slate-500">
+          <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+          <span>{batch?.quantity || 0} шт</span>
+        </div>
+
+        {batch?.is_urgent && (
+          <div className="flex items-center gap-1 text-sm font-bold text-tertiary">
+            <span className="material-symbols-outlined text-[18px]">priority_high</span>
+            <span>Терміново</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 text-sm font-medium text-slate-500">
+          <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+          <span>{formatDate(batch?.planned_end_date)}</span>
+        </div>
+      </div>
+
+      <div className="mb-5 flex gap-4 rounded-xl bg-surface-container-low p-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Тканина</p>
+          <p className="text-sm font-bold text-on-surface-variant">{batch?.fabric_type || '—'}</p>
+        </div>
+        <div className="w-px bg-outline-variant/30" />
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Колір</p>
+          <p className="text-sm font-bold text-on-surface-variant">{batch?.fabric_color || '—'}</p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-end justify-between">
+          <span className={clsx('text-[12px] font-bold tracking-tight', ui.progressText)}>
+            Прогрес виробництва
+          </span>
+          <span className={clsx('text-[16px] font-black', ui.progressText)}>
+            {task.summary.quantity}/{batch?.quantity || 0}
+          </span>
+        </div>
+        <div className="progress-track w-full bg-surface-container-high">
+          <div
+            className={clsx('h-full rounded-full transition-all', ui.progressBar)}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      </div>
+    </button>
+  );
 }
 
 export default function TasksPage() {
-  const router = useRouter();
   const [tasks, setTasks] = useState<TaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filter, setFilter] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+
     try {
       const res = await fetch('/api/mobile/tasks', { cache: 'no-store' });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Не вдалося завантажити завдання');
-      }
+      if (!res.ok) throw new Error(data.error || 'Не вдалося завантажити завдання');
       setTasks(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не вдалося завантажити завдання');
@@ -68,123 +172,55 @@ export default function TasksPage() {
     load();
   }, [load]);
 
+  const filteredTasks = useMemo(() => {
+    if (filter === 'working') return tasks.filter((task) => task.status !== 'pending');
+    if (filter === 'pending') return tasks.filter((task) => task.status === 'pending');
+    return tasks;
+  }, [filter, tasks]);
+
   return (
-    <div className="px-4 py-5 space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-[var(--text-1)] flex items-center gap-3">
-            <ClipboardList className="w-7 h-7 text-emerald-500" />
-            Завдання
-          </h1>
-          <p className="text-xs text-[var(--text-3)] mt-1">
-            {tasks.length} активних завдань
-          </p>
-        </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="p-2.5 rounded-xl bg-[var(--bg-card2)] text-[var(--text-2)]"
-        >
-          <RefreshCw className={clsx('w-5 h-5', loading && 'animate-spin')} />
-        </button>
-      </div>
+    <div className="px-6 pb-24 pt-4">
+      <section className="no-scrollbar mb-8 flex gap-2 overflow-x-auto py-2">
+        {[
+          { id: 'all', label: 'Усі' },
+          { id: 'working', label: 'В роботі' },
+          { id: 'pending', label: 'Очікує' },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setFilter(item.id)}
+            className={clsx(
+              'rounded-full px-6 py-2.5 text-sm font-bold transition-colors',
+              filter === item.id
+                ? 'scale-95 bg-primary text-on-primary shadow-lg shadow-primary/20'
+                : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest',
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </section>
 
-      {error && (
-        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
-          <AlertTriangle className="w-5 h-5 shrink-0" />
-          <span>{error}</span>
+      {loading ? (
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-error/20 bg-error/10 px-4 py-4 text-center text-sm font-bold text-error">
+          {error}
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        <div className="flex min-h-[40vh] items-center justify-center rounded-[20px] border border-dashed border-outline-variant/30 bg-surface-container-low text-sm font-medium italic text-outline">
+          Наразі завдань немає
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredTasks.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
         </div>
       )}
-
-      {loading && (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-        </div>
-      )}
-
-      {!loading && !error && tasks.length === 0 && (
-        <div className="rounded-3xl border border-dashed border-[var(--border)] bg-[var(--bg-card)] px-6 py-16 text-center text-[var(--text-3)]">
-          <ClipboardList className="mx-auto mb-3 w-12 h-12 opacity-30" />
-          <div className="text-sm font-semibold">Немає завдань</div>
-          <div className="mt-1 text-xs">Якщо очікуєте партію, зверніться до майстра</div>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {tasks.map((task) => {
-          const batch = task.batch;
-          const colors = parseFabricColors(batch?.fabric_color || null);
-          const deadline = batch?.planned_end_date
-            ? new Date(batch.planned_end_date).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })
-            : '—';
-          const statusLabel =
-            task.status === 'pending' ? 'Очікує' : task.status === 'accepted' ? 'Прийнято' : 'В роботі';
-          const statusClass =
-            task.status === 'pending'
-              ? 'bg-amber-500/15 text-amber-500'
-              : task.status === 'accepted'
-                ? 'bg-blue-500/15 text-blue-500'
-                : 'bg-emerald-500/15 text-emerald-500';
-
-          return (
-            <button
-              key={task.id}
-              onClick={() => router.push(`/tasks/${task.id}`)}
-              className="w-full rounded-3xl border border-[var(--border)] bg-[var(--bg-card)] p-4 text-left transition-colors active:bg-[var(--bg-card2)]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    {batch?.is_urgent && (
-                      <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-red-500">
-                        Терміново
-                      </span>
-                    )}
-                    <span className="font-mono text-xs font-bold text-emerald-500">{batch?.batch_number || `#${task.batch_id}`}</span>
-                  </div>
-
-                  <div className="truncate text-base font-black text-[var(--text-1)]">
-                    {batch?.product_models?.name || 'Без моделі'}
-                  </div>
-
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-3)]">
-                    <span className={clsx('rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider', statusClass)}>
-                      {statusLabel}
-                    </span>
-                    <span>•</span>
-                    <span>{batch?.quantity || 0} шт</span>
-                    <span>•</span>
-                    <span>{task.summary.rolls} рулонів</span>
-                    <span>•</span>
-                    <span>{deadline}</span>
-                  </div>
-
-                  {batch?.fabric_type && (
-                    <div className="mt-2 text-xs text-[var(--text-2)]">
-                      Тканина: <span className="font-semibold text-[var(--text-1)]">{batch.fabric_type}</span>
-                    </div>
-                  )}
-
-                  {colors.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {colors.map((item) => (
-                        <span
-                          key={`${item.color}-${item.rolls}`}
-                          className="rounded-full border border-[var(--border)] bg-[var(--bg-base)] px-2.5 py-1 text-[10px] font-bold text-[var(--text-2)]"
-                        >
-                          {item.color} · {item.rolls} рул.
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <ChevronRight className="mt-1 w-5 h-5 shrink-0 text-[var(--text-3)]" />
-              </div>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

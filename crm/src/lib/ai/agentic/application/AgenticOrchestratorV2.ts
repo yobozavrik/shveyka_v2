@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { SupabaseRepository } from '../infrastructure/SupabaseRepository';
+import { KnowledgeRepository } from '../../knowledge/KnowledgeRepository';
 import { AIProvider } from '../infrastructure/AIProvider';
 import { AIProviderFactory } from '../infrastructure/AIProviderFactory';
 import { createToolRegistry, ToolRegistry, Citation } from '../tools';
@@ -13,6 +14,7 @@ export class AgenticOrchestratorV2 {
   private toolRegistry: ToolRegistry;
   private policyGuard: PolicyGuard;
   private auditLogger: AuditLogger;
+  private knowledgeRepo: KnowledgeRepository;
 
   constructor(userRole: UserRole = 'manager') {
     this.repo = new SupabaseRepository();
@@ -20,6 +22,7 @@ export class AgenticOrchestratorV2 {
     this.toolRegistry = createToolRegistry();
     this.policyGuard = new PolicyGuard(userRole);
     this.auditLogger = new AuditLogger();
+    this.knowledgeRepo = new KnowledgeRepository();
   }
 
   private getAi(): AIProvider {
@@ -38,6 +41,42 @@ export class AgenticOrchestratorV2 {
       console.error(`Ошибка чтения навыка ${fileName}:`, error);
       return "";
     }
+  }
+
+  async explainOrder(orderId: number): Promise<string> {
+    const result = await this.handleQuery(
+      `Объясни статус заказа #${orderId} простым языком для работников`,
+      { order_id: orderId },
+      []
+    );
+    return result.answer;
+  }
+
+  async explainPayroll(employeeId?: number, periodId?: number): Promise<string> {
+    const result = await this.handleQuery(
+      'Объясни расчёт зарплаты простым языком для работников',
+      { worker_id: employeeId, period_id: periodId },
+      []
+    );
+    return result.answer;
+  }
+
+  async retrieveSOP(sopName: string): Promise<string> {
+    const tool = this.toolRegistry.get('get_sop');
+    if (!tool) {
+      return `SOP "${sopName}" не найден`;
+    }
+
+    const result = await tool.execute({ name: sopName });
+    if (!result.success) {
+      return `SOP "${sopName}" не найден`;
+    }
+
+    return result.data?.content || 'Содержимое не найдено';
+  }
+
+  async searchKnowledge(query: string, limit: number = 5): Promise<any[]> {
+    return this.knowledgeRepo.searchKnowledge(query, limit);
   }
 
   async handleQuery(

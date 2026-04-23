@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import path from 'path';
 import { promisify } from 'util';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 const execAsync = promisify(exec);
 
@@ -19,10 +21,10 @@ export async function POST() {
     
     if (stderr && !stdout) {
       console.error('❌ Scraper error:', stderr);
-      return NextResponse.json({ success: false, error: stderr }, { status: 500 });
+      return ApiResponse.error(stderr, ERROR_CODES.INTERNAL_ERROR, 500);
     }
 
-    return NextResponse.json({ 
+    return ApiResponse.success({ 
       success: true, 
       message: 'Work.ua sync completed',
       output: stdout
@@ -30,9 +32,6 @@ export async function POST() {
     
   } catch (error: any) {
     console.error('❌ Sync API error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+    return ApiResponse.handle(error, 'vacancies');
   }
 }

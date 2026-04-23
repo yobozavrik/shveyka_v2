@@ -1,120 +1,110 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { recordAuditLog } from '@/lib/audit';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const { id } = await params;
     const supabase = await createServerClient(true);
-
-    const { data: candidate, error } = await supabase
+    const { data, error } = await supabase
       .from('candidates')
-      .select('*, vacancies(*)')
-      .eq('id', parseInt(id))
+      .select('*')
+      .eq('id', parseInt(id, 10))
       .single();
 
-    if (error || !candidate) {
-      return NextResponse.json({ error: error?.message || 'Не знайдено' }, { status: 404 });
-    }
-
-    return NextResponse.json(candidate);
+    if (error) return ApiResponse.handle(error, 'candidates_get');
+    return ApiResponse.success(data);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'candidates_get');
   }
 }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(request: Request, { params }: Params) {
   try {
     const auth = await getAuth();
     if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+      return ApiResponse.error('Forbidden', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { id } = await params;
-    const body = await req.json();
+    const body = await request.json();
     const supabase = await createServerClient(true);
 
-    const { data: oldData } = await supabase.from('candidates').select('*').eq('id', parseInt(id)).single();
-
-    const allowed = ['full_name', 'phone', 'resume_text', 'status', 'ai_score', 'ai_analysis'];
-    const update: Record<string, any> = {};
-    for (const key of allowed) {
-      if (body[key] !== undefined) update[key] = body[key];
-    }
+    const { data: oldData } = await supabase.from('candidates').select('*').eq('id', id).single();
 
     const { data, error } = await supabase
       .from('candidates')
-      .update(update)
-      .eq('id', parseInt(id))
+      .update({
+        ...body,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parseInt(id, 10))
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return ApiResponse.handle(error, 'candidates_patch');
 
-    // Record audit log
     try {
-      const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'UPDATE',
         entityType: 'candidate',
         entityId: id,
         oldData,
         newData: data,
-        request: req,
+        request,
         auth: { id: auth.userId, username: auth.username }
       });
     } catch (auditError) {
       console.warn('Failed to record audit log:', auditError);
     }
 
-    return NextResponse.json(data);
+    return ApiResponse.success(data);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'candidates_patch');
   }
 }
 
-export async function DELETE(req: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   try {
     const auth = await getAuth();
-    if (!auth || auth.role !== 'admin') {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+    if (!auth || !['admin', 'manager', 'hr'].includes(auth.role)) {
+      return ApiResponse.error('Forbidden', ERROR_CODES.FORBIDDEN, 403);
     }
 
     const { id } = await params;
     const supabase = await createServerClient(true);
 
-    const { data: oldData } = await supabase.from('candidates').select('*').eq('id', parseInt(id)).single();
+    const { data: oldData } = await supabase.from('candidates').select('*').eq('id', id).single();
 
     const { error } = await supabase
       .from('candidates')
       .delete()
-      .eq('id', parseInt(id));
+      .eq('id', parseInt(id, 10));
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return ApiResponse.handle(error, 'candidates_delete');
 
-    // Record audit log
     try {
-      const { recordAuditLog } = await import('@/lib/audit');
-      recordAuditLog({
+      await recordAuditLog({
         action: 'DELETE',
         entityType: 'candidate',
         entityId: id,
         oldData,
-        newData: null,
-        request: req,
+        request,
         auth: { id: auth.userId, username: auth.username }
       });
     } catch (auditError) {
       console.warn('Failed to record audit log:', auditError);
     }
 
-    return NextResponse.json({ success: true });
+    return ApiResponse.success({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'candidates_delete');
   }
 }
