@@ -1,11 +1,12 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { 
-  Package, Search, Plus, Calendar, Layers, Loader2, 
-  AlertTriangle, X, Check, Trash2, Scissors, 
-  ArrowRight, Clock, MessageSquare, Edit3 
+import {
+  Package, Search, Plus, Calendar, Layers, Loader2,
+  AlertTriangle, X, Check, Trash2, Scissors,
+  ArrowRight, Clock, MessageSquare, Edit3, CheckCircle
 } from 'lucide-react';
 
 interface ProductModel { id: number; name: string; sku: string; thumbnail_url?: string | null; sizes?: string[] | null }
@@ -35,6 +36,8 @@ interface Batch {
   employees?: Employee | null;
   size_variants?: Record<string, number | string[]> | null;
   operations_progress?: Record<number, number>;
+  task_role?: string | null;
+  task_status?: string | null;
 }
 
 interface BatchStageTask {
@@ -187,24 +190,25 @@ const EMBROIDERY_COLORS = [
 ];
 
 const PRODUCTION_STEPS = [
-  { id: 7,  label: 'Розкрій',      short: 'Р' },
-  { id: 13, label: 'Вишивка',      short: 'В' },
-  { id: 9,  label: 'Оверлок',      short: 'О' },
-  { id: 14, label: 'Прямострочка', short: 'П' },
-  { id: 15, label: 'Розпошив',     short: 'Рз' },
-  { id: 12, label: 'Упаковка',     short: 'У' },
+  { id: 1, code: 'cutting',       label: 'Розкрій',      short: 'Р' },
+  { id: 2, code: 'sewing',        label: 'Пошив',        short: 'П' },
+  { id: 3, code: 'overlock',      label: 'Оверлок',      short: 'О' },
+  { id: 4, code: 'straight_stitch', label: 'Прямострочка', short: 'Пр' },
+  { id: 5, code: 'coverlock',     label: 'Розпошив',     short: 'Рзп' },
+  { id: 6, code: 'packaging',     label: 'Упаковка',     short: 'У' },
 ];
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  created:          { label: 'Створено',       color: 'text-slate-600 dark:text-slate-400',   bg: 'bg-slate-100 dark:bg-slate-800', dot: 'bg-slate-400' },
-  cutting:          { label: 'Розкрій',        color: 'text-orange-700 dark:text-orange-400',  bg: 'bg-orange-50 dark:bg-orange-950/30', dot: 'bg-orange-500' },
-  embroidery:       { label: 'Вишивка',        color: 'text-purple-700 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/30', dot: 'bg-purple-500' },
-  sewing:           { label: 'Пошив',          color: 'text-indigo-700 dark:text-indigo-400',  bg: 'bg-indigo-50 dark:bg-indigo-950/30', dot: 'bg-indigo-500' },
-  quality_control:  { label: 'ОТК',            color: 'text-amber-700 dark:text-amber-400',   bg: 'bg-amber-50 dark:bg-amber-950/30',   dot: 'bg-amber-500' },
-  packaging:        { label: 'Упаковка',       color: 'text-cyan-700 dark:text-cyan-400',     bg: 'bg-cyan-50 dark:bg-cyan-950/30',    dot: 'bg-cyan-500' },
-  ready:            { label: 'Готово',         color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30', dot: 'bg-emerald-500' },
-  shipped:          { label: 'Відвантажено',   color: 'text-blue-700 dark:text-blue-400',    bg: 'bg-blue-50 dark:bg-blue-950/30',   dot: 'bg-blue-500' },
-  cancelled:        { label: 'Скасовано',      color: 'text-red-700 dark:text-red-400',     bg: 'bg-red-50 dark:bg-red-950/30',    dot: 'bg-red-500' },
+  created:          { label: 'Створено',       color: 'text-[var(--text-2)]',   bg: 'bg-[var(--bg-card2)]', dot: 'bg-[var(--text-3)]' },
+  cutting:          { label: 'Розкрій',        color: 'text-orange-500',  bg: 'bg-orange-500/10', dot: 'bg-orange-500' },
+  sewing:           { label: 'Пошив',          color: 'text-blue-500',    bg: 'bg-blue-500/10',  dot: 'bg-blue-500' },
+  overlock:         { label: 'Оверлок',        color: 'text-purple-500',  bg: 'bg-purple-500/10', dot: 'bg-purple-500' },
+  straight_stitch:  { label: 'Прямострочка',   color: 'text-indigo-500',  bg: 'bg-indigo-500/10', dot: 'bg-indigo-500' },
+  coverlock:        { label: 'Розпошив',       color: 'text-violet-500',  bg: 'bg-violet-500/10', dot: 'bg-violet-500' },
+  packaging:        { label: 'Упаковка',       color: 'text-cyan-500',    bg: 'bg-cyan-500/10',  dot: 'bg-cyan-500' },
+  ready:            { label: 'Готово',         color: 'text-emerald-500', bg: 'bg-emerald-500/10', dot: 'bg-emerald-500' },
+  shipped:          { label: 'Відвантажено',   color: 'text-blue-500',    bg: 'bg-blue-500/10',  dot: 'bg-blue-500' },
+  cancelled:        { label: 'Скасовано',      color: 'text-red-500',     bg: 'bg-red-500/10',   dot: 'bg-red-500' },
 };
 
 const EMPTY_FORM = { 
@@ -238,7 +242,7 @@ function BatchesContent() {
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
+  const [statusFilter, setStatusFilter] = useState(searchParams?.get('status') || 'all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchModel, setSearchModel] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
@@ -258,7 +262,7 @@ function BatchesContent() {
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(searchParams);
+    const params = new URLSearchParams(searchParams?.toString() || '');
     if (statusFilter === 'all') {
       params.delete('status');
     } else {
@@ -379,6 +383,34 @@ function BatchesContent() {
     }
   }
 
+  async function handleTransferToSewing(batchId: number) {
+    if (!confirm('Підтвердити виконання розкрою та передати партію на пошив?')) return;
+    setSaving(true); setError('');
+    try {
+      const res = await fetch(`/api/batches/${batchId}/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          next_stage: 'sewing',
+          next_role: 'sewing',
+          notes: 'Передано на пошив через картку розкрою'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не вдалося передати партію');
+      
+      await load();
+      if (selectedBatch?.id === batchId) {
+         await loadBatchFlow(batchId);
+         setSelectedBatch(prev => prev ? { ...prev, status: 'sewing' } : prev);
+      }
+      setActiveStageCode(null);
+      setActiveNastilId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Помилка передачі');
+    } finally { setSaving(false); }
+  }
+
   async function handleSave() {
     setSaving(true); setError('');
     try {
@@ -452,7 +484,20 @@ function BatchesContent() {
   const filtered = batchesArray.filter(b => {
     const matchSearch = b.batch_number.toLowerCase().includes(search.toLowerCase()) ||
       (b.product_models?.name || '').toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || b.status === statusFilter;
+    
+    // Улучшенная логика статусов:
+    // Если фильтр 'cutting', показываем партии со статусом 'cutting' ИЛИ 'created' с задачей на раскрой
+    let matchStatus = statusFilter === 'all';
+    if (!matchStatus) {
+      if (statusFilter === 'cutting') {
+        matchStatus = b.status === 'cutting' || (b.status === 'created' && b.task_role === 'cutting');
+      } else if (statusFilter === 'sewing') {
+        matchStatus = b.status === 'sewing';
+      } else {
+        matchStatus = b.status === statusFilter;
+      }
+    }
+    
     return matchSearch && matchStatus;
   });
 
@@ -528,7 +573,10 @@ function BatchesContent() {
             <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold tabular-nums transition-colors ${
               statusFilter === status ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500 group-hover:bg-slate-300'
             }`}>
-              {batchesArray.filter(b => b.status === status).length}
+              {batchesArray.filter(b => {
+                 if (status === 'cutting') return b.status === 'cutting' || (b.status === 'created' && b.task_role === 'cutting');
+                 return b.status === status;
+              }).length}
             </span>
           </button>
         ))}
@@ -560,12 +608,51 @@ function BatchesContent() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.map(b => {
+                // ─── ШПИОНСКИЙ ЛОГ (Для отладки) ───
+                console.log(`[DEBUG] Партія: ${b.batch_number}`, {
+                  status_партии: b.status,
+                  status_задачи: b.task_status,
+                  роль_задачи: b.task_role,
+                  какой_цвет_ожидался: b.task_status === 'completed' ? 'ЗЕЛЕНЫЙ' : (b.task_status === 'pending' && b.status !== 'created' ? 'СИНИЙ' : 'КРАСНЫЙ/ЖЕЛТЫЙ')
+                });
+                // ────────────────────────────────────
+
                 const isOverdue = b.planned_end_date && new Date(b.planned_end_date) < new Date() && !['ready', 'shipped', 'cancelled'].includes(b.status);
                 const statusInfo = STATUS_MAP[b.status] || STATUS_MAP.created;
                 
-                const steps = ['created', 'cutting', 'sewing', 'ready'];
-                const currentStepIdx = steps.indexOf(b.status);
+                // Читаем статусы задачи
+                const taskIsCompleted = b.task_status === 'completed';
+                const taskInProgress = b.task_status === 'accepted' || b.task_status === 'in_progress';
+                const taskPending = b.task_status === 'pending';
+
+                // ЛОГИКА ЦВЕТОВ (ПО ПРИОРИТЕТУ)
                 
+                // 1. ЭТАП ЗАВЕРШЕН РАБОТНИКОМ (Ждет действия Начальника)
+                // Статус партии еще старый (напр. cutting), но задача completed
+                if (taskIsCompleted) {
+                  var displayStatus = { label: 'Готово до передачі', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500' };
+                } 
+                // 2. ПАРТИЯ НА ЭТАПЕ (Напр. sewing), НО задача еще никем не взята (pending) -> СИНИЙ
+                // Это то, что ты хотел: партия в цехе, ждет сотрудника
+                else if (taskPending && b.status !== 'created') {
+                  const stageName = STATUS_MAP[b.status]?.label || 'Етап';
+                  var displayStatus = { label: `Очікує на ${stageName.toLowerCase()}`, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500' };
+                }
+                // 3. СОТРУДНИК ВЗЯЛ ЗАДАЧУ (accepted/in_progress) -> КРАСНЫЙ
+                else if (taskInProgress) {
+                  var displayStatus = { label: 'В роботі', color: 'text-red-600', bg: 'bg-red-50 border-red-200', dot: 'bg-red-500 animate-pulse' };
+                } 
+                // 4. СТАНДАРТНЫЙ СТАТУС (Создана, Отменена и т.д.) -> ЖЕЛТЫЙ/СЕРОЙ
+                else {
+                  var displayStatus = statusInfo;
+                }
+                
+                // Логика прогресс-бара (делений)
+                // Определяем текущий этап партии
+                const currentStage = b.status;
+                const allSteps = PRODUCTION_STEPS.map(s => s.code);
+                const currentStepIdx = allSteps.indexOf(currentStage);
+
                 return (
                   <tr key={b.id} 
                     onClick={() => setSelectedBatch(b)}
@@ -577,7 +664,9 @@ function BatchesContent() {
                         </div>
                         <div>
                           <div className="font-black text-slate-900 flex items-center gap-2">
-                            {b.batch_number}
+                            <Link href={`/batches/${b.id}`} className="hover:text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>
+                              {b.batch_number}
+                            </Link>
                             {b.is_urgent && (
                               <span className="bg-red-50 text-red-600 text-[10px] font-black px-1.5 py-0.5 rounded border border-red-100 animate-pulse">HOT</span>
                             )}
@@ -597,28 +686,30 @@ function BatchesContent() {
                     </td>
                     <td className="px-6 py-5">
                       <div className="space-y-2 max-w-[180px]">
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border ${statusInfo.bg} ${statusInfo.color} border-current/10`}>
-                          <div className={`h-1.5 w-1.5 rounded-full ${statusInfo.dot}`} />
-                          {statusInfo.label}
+                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border ${displayStatus.bg} ${displayStatus.color} border-current/10`}>
+                          <div className={`h-1.5 w-1.5 rounded-full ${displayStatus.dot}`} />
+                          {displayStatus.label}
                         </div>
                         <div className="flex gap-1.5">
-                          {PRODUCTION_STEPS.map((step) => {
-                            const confirmed = b.operations_progress?.[step.id] || 0;
-                            const percent = Math.min(100, Math.round((confirmed / b.quantity) * 100));
-                            const isCompleted = percent >= 100;
-                            const isStarted = percent > 0;
-                            
+                          {PRODUCTION_STEPS.map((step, idx) => {
+                            // Логика заполнения:
+                            // 1. Если индекс этапа меньше текущего статуса -> Пройден (Зеленый)
+                            // 2. Если индекс равен текущему -> В процессе (Синий/Мигающий)
+                            // 3. Иначе -> Будущий (Серый)
+                            const isCompleted = currentStepIdx > idx;
+                            const isCurrent = currentStepIdx === idx;
+
                             return (
-                              <div key={step.id} className="relative group/step flex-1">
+                              <div key={step.code} className="relative group/step flex-1">
                                 <div className={`h-2 rounded-full transition-all duration-500 ${
-                                  isCompleted ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 
-                                  isStarted ? 'bg-indigo-400 animate-pulse' : 'bg-slate-100'
+                                  isCompleted ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' :
+                                  isCurrent ? 'bg-blue-400 animate-pulse' : 'bg-slate-100'
                                 }`} />
                                 <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover/step:opacity-100 transition-opacity bg-slate-900 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap pointer-events-none z-20">
-                                  {step.label}: {percent}%
+                                  {step.label}: {isCompleted ? '100%' : isCurrent ? 'В работе' : '0%'}
                                 </div>
                                 <div className={`text-[8px] mt-1 text-center font-black ${
-                                  isCompleted ? 'text-emerald-600' : isStarted ? 'text-indigo-500' : 'text-slate-300'
+                                  isCompleted ? 'text-emerald-600' : isCurrent ? 'text-blue-500' : 'text-slate-300'
                                 }`}>
                                   {step.short}
                                 </div>
@@ -847,9 +938,20 @@ function BatchesContent() {
                     Партія {selectedBatch.batch_number}
                   </h2>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-[10px] uppercase font-black px-2.5 py-1 rounded-full ${STATUS_MAP[selectedBatch.status]?.bg} ${STATUS_MAP[selectedBatch.status]?.color}`}>
-                      {STATUS_MAP[selectedBatch.status]?.label}
-                    </span>
+                    {(() => {
+                      const isInProgress = selectedBatch.task_status === 'accepted' || selectedBatch.task_status === 'in_progress';
+                      const isPending = selectedBatch.task_status === 'pending';
+                      const ds = isInProgress 
+                        ? { label: 'В роботі', color: 'text-red-600', bg: 'bg-red-50 border-red-200' }
+                        : isPending 
+                          ? { label: 'Очікує виконавця', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' }
+                          : STATUS_MAP[selectedBatch.status] || STATUS_MAP.created;
+                      return (
+                        <span className={`text-[10px] uppercase font-black px-2.5 py-1 rounded-full border ${ds.bg} ${ds.color}`}>
+                          {ds.label}
+                        </span>
+                      );
+                    })()}
                     {selectedBatch.is_urgent && (
                       <span className="bg-red-50 text-red-600 text-[10px] uppercase font-black px-2.5 py-1 rounded-full flex items-center gap-1 border border-red-100">
                         <AlertTriangle className="h-3 w-3" /> Терміново
@@ -1464,7 +1566,16 @@ function BatchesContent() {
                   )}
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => handleTransferToSewing(selectedBatch.id)}
+                    disabled={saving}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-[20px] text-sm font-black transition-all border border-blue-500 shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Підтвердити та передати на пошив
+                  </button>
                   <button
                     type="button"
                     onClick={() => setActiveNastilId(null)}

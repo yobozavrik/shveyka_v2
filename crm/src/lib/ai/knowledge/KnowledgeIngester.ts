@@ -111,7 +111,7 @@ export class KnowledgeIngester {
 
     let totalChunks = 0;
 
-    const walkDir = (currentPath: string, relativePath: string) => {
+    const walkDir = async (currentPath: string, relativePath: string) => {
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
       
       for (const entry of entries) {
@@ -119,15 +119,15 @@ export class KnowledgeIngester {
         const relativeEntryPath = path.join(relativePath, entry.name);
         
         if (entry.isDirectory()) {
-          walkDir(entryPath, relativeEntryPath);
+          await walkDir(entryPath, relativeEntryPath);
         } else if (entry.isFile() && entry.name.endsWith('.md')) {
-          const chunks = this.ingestFile(relativeEntryPath);
+          const chunks = await this.ingestFile(relativeEntryPath);
           totalChunks += chunks;
         }
       }
     };
 
-    walkDir(targetPath, dirPath || '');
+    await walkDir(targetPath, dirPath || '');
     
     return totalChunks;
   }

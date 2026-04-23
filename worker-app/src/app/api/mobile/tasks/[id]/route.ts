@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import { createRequestLogger } from '@/lib/logger';
+import { extractSizeBreakdown, mergeSizeBreakdowns, type SizeQuantityMap } from '@/lib/overlock';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -132,7 +134,39 @@ async function loadStageOperations(stageId: number) {
     .order('code', { ascending: true });
 }
 
+async function loadCuttingStage() {
+  const supabase = getSupabaseAdmin('shveyka');
+  return supabase
+    .from('production_stages')
+    .select('id, code, name, assigned_role, sequence_order, color, is_active')
+    .eq('code', 'cutting')
+    .single();
+}
+
+async function loadBatchCuttingSizeBreakdown(batchId: number): Promise<SizeQuantityMap> {
+  const supabase = getSupabaseAdmin('shveyka');
+  const { data: cuttingStage, error: cuttingStageError } = await loadCuttingStage();
+  if (cuttingStageError || !cuttingStage?.id) return {};
+
+  const { data: rows, error } = await supabase
+    .from('task_entries')
+    .select('data')
+    .eq('batch_id', batchId)
+    .eq('stage_id', cuttingStage.id)
+    .order('created_at', { ascending: true });
+
+  if (error || !rows?.length) return {};
+
+  const breakdown: SizeQuantityMap = {};
+  for (const row of rows as Array<{ data: Record<string, any> }>) {
+    mergeSizeBreakdowns(breakdown, extractSizeBreakdown(row.data));
+  }
+
+  return breakdown;
+}
+
 export async function GET(request: Request, { params }: Params) {
+  const logger = createRequestLogger(request, { action: 'get_task' });
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -173,6 +207,7 @@ export async function GET(request: Request, { params }: Params) {
     : { data: null };
 
   const batch = batchRaw ? { ...batchRaw, product_models: productModel } : null;
+  const sourceSizeBreakdown = batchRaw?.id ? await loadBatchCuttingSizeBreakdown(batchRaw.id) : {};
 
   const stageRole = stage?.assigned_role || task.assigned_role;
   if (stageRole !== role) {
@@ -211,7 +246,7 @@ export async function GET(request: Request, { params }: Params) {
       .eq('batch_id', task.batch_id)
       .filter('data->>embroidery_sent', 'eq', 'true')
       .order('entry_number', { ascending: true });
-    embroideryNastils = (sentNastils || []).map((e) => ({ ...e, source: 'embroidery_queue' as const }));
+    embroideryNastils = (sentNastils || []).map((e: any) => ({ ...e, source: 'embroidery_queue' as const }));
   }
 
   return NextResponse.json({
@@ -229,6 +264,7 @@ export async function GET(request: Request, { params }: Params) {
     legacy_nastils: legacyNastils || [],
     display_entries: displayEntries,
     embroidery_nastils: embroideryNastils,
+    source_size_breakdown: sourceSizeBreakdown,
     summary: {
       entries: displayEntries.length,
       quantity: quantityTotal,
@@ -238,6 +274,7 @@ export async function GET(request: Request, { params }: Params) {
 }
 
 export async function POST(request: Request, { params }: Params) {
+  const logger = createRequestLogger(request, { action: 'update_task' });
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -301,6 +338,14 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    // Логика: Партия переходит в статус этапа (например, 'sewing'), когда работник берет задачу.
+    if (stage?.code) {
+      await supabase
+        .from('production_batches')
+        .update({ status: stage.code })
+        .eq('id', task.batch_id);
+    }
+
     return NextResponse.json({ task: data });
   }
 
@@ -350,6 +395,16 @@ export async function POST(request: Request, { params }: Params) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // ─── ИСПРАВЛЕНИЕ: Обновляем статус партии на текущий этап ───
+    // Когда задача завершена, партия должна получить статус этого этапа
+    // чтобы CRM могла её отобразить в правильной вкладке
+    if (stage?.code) {
+      await supabase
+        .from('production_batches')
+        .update({ status: stage.code })
+        .eq('id', task.batch_id);
     }
 
     return NextResponse.json({ task: data });

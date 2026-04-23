@@ -1,44 +1,83 @@
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { EntryService } from '@/services/entry.service';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
+export async function GET(request: Request, { params }: Params) {
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
+
+    const { id } = await params;
+    const result = await EntryService.getById(Number(id), auth);
+
+    if (!result.success) {
+      const status = result.status || 500;
+      const code =
+        status === 401 ? ERROR_CODES.UNAUTHORIZED :
+        status === 403 ? ERROR_CODES.FORBIDDEN :
+        status === 404 ? ERROR_CODES.NOT_FOUND :
+        status === 400 ? ERROR_CODES.BAD_REQUEST :
+        ERROR_CODES.INTERNAL_ERROR;
+      return ApiResponse.error(result.error!, code, status);
+    }
+
+    return ApiResponse.success(result.data);
+  } catch (error) {
+    return ApiResponse.handle(error, 'entries_id_get');
+  }
+}
+
 export async function PATCH(request: Request, { params }: Params) {
-  const auth = await getAuth();
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
-  const { id } = await params;
-  const entryId = Number(id);
-  if (!Number.isFinite(entryId)) {
-    return NextResponse.json({ error: 'Invalid entry id' }, { status: 400 });
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    
+    const result = await EntryService.update(Number(id), body, auth);
+
+    if (!result.success) {
+      const status = result.status || 500;
+      const code =
+        status === 401 ? ERROR_CODES.UNAUTHORIZED :
+        status === 403 ? ERROR_CODES.FORBIDDEN :
+        status === 404 ? ERROR_CODES.NOT_FOUND :
+        status === 400 ? ERROR_CODES.BAD_REQUEST :
+        ERROR_CODES.INTERNAL_ERROR;
+      return ApiResponse.error(result.error!, code, status);
+    }
+
+    return ApiResponse.success(result.data);
+  } catch (error) {
+    return ApiResponse.handle(error, 'entries_id_patch');
   }
+}
 
-  const body = await request.json().catch(() => ({}));
-  const supabase = await createServerClient(true);
+export async function DELETE(request: Request, { params }: Params) {
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
-  const { data: existing, error: fetchError } = await supabase
-    .from('task_entries')
-    .select('id, data')
-    .eq('id', entryId)
-    .single();
+    const { id } = await params;
+    const result = await EntryService.delete(Number(id), auth);
 
-  if (fetchError || !existing) {
-    return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+    if (!result.success) {
+      const status = result.status || 500;
+      const code =
+        status === 401 ? ERROR_CODES.UNAUTHORIZED :
+        status === 403 ? ERROR_CODES.FORBIDDEN :
+        status === 404 ? ERROR_CODES.NOT_FOUND :
+        status === 400 ? ERROR_CODES.BAD_REQUEST :
+        ERROR_CODES.INTERNAL_ERROR;
+      return ApiResponse.error(result.error!, code, status);
+    }
+
+    return ApiResponse.success({ success: true });
+  } catch (error) {
+    return ApiResponse.handle(error, 'entries_id_delete');
   }
-
-  const mergedData = { ...(existing.data || {}), ...body.data };
-
-  const { data, error } = await supabase
-    .from('task_entries')
-    .update({ data: mergedData, updated_at: new Date().toISOString() })
-    .eq('id', entryId)
-    .select('id, data, notes, recorded_at, updated_at')
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
 }

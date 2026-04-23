@@ -247,12 +247,9 @@ export default function BatchPipelinePage() {
         const name = (data.employee?.full_name || '').toLowerCase();
         
         const privileged = ['master', 'supervisor', 'admin'].includes(role) || 
-                          ['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир'].includes(pos) ||
-                          name.includes('марина коваль');
+                          ['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир'].includes(pos);
                           
         setIsMaster(privileged);
-        // Debug info if needed
-        console.log('Auth check:', { role, pos, name, privileged });
       })
       .catch(err => console.error('Auth check error:', err));
   }, [loadData]);
@@ -268,21 +265,29 @@ export default function BatchPipelinePage() {
       return;
     }
 
-    // For cutting ops: use cutting-task endpoint directly (works even if tasks API returned 401)
-    if (stageCode === 'cutting' || op.name.toLowerCase().includes('розкрій')) {
-      try {
-        const res = await fetch(`/api/mobile/batches/${id}/cutting-task`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.task?.id) {
-            router.push(`/tasks/${data.task.id}`);
-            return;
-          }
-        }
-      } catch { /* fallthrough */ }
-    }
+    // Если задачи нет — создаём её автоматически
+    try {
+      const res = await fetch('/api/mobile/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batch_id: parseInt(id),
+          stage_code: stageCode,
+          operation_id: op.id,
+        }),
+      });
 
-    router.push(`/matrix?batchId=${id}&opId=${op.id}&opName=${encodeURIComponent(op.name)}`);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Не удалось создать задачу');
+      }
+
+      const data = await res.json();
+      router.push(`/tasks/${data.task.id}`);
+    } catch (err) {
+      console.error('Task creation error:', err);
+      alert('Ошибка: не удалось создать задачу для этого этапа');
+    }
   };
 
   if (loading) return (

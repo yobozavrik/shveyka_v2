@@ -25,7 +25,7 @@ export default function TrainingPage() {
           </div>
           <h3 className="font-bold text-lg text-[var(--text-1)] mb-1">Основи оверлоку</h3>
           <p className="text-sm text-[var(--text-3)] mb-4">Базовий курс для новачків.</p>
-          <div className="w-full bg-black/5 dark:bg-white/5 rounded-full h-1.5 mb-2">
+          <div className="w-full bg-[var(--bg-card2)] rounded-full h-1.5 mb-2">
             <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '45%' }}></div>
           </div>
           <div className="text-xs text-[var(--text-3)] text-right">45% пройдено</div>
@@ -40,7 +40,7 @@ export default function TrainingPage() {
           </div>
           <h3 className="font-bold text-lg text-[var(--text-1)] mb-1">Техніка безпеки</h3>
           <p className="text-sm text-[var(--text-3)] mb-4">Обов'язковий вступний інструктаж.</p>
-          <div className="w-full bg-black/5 dark:bg-white/5 rounded-full h-1.5 mb-2">
+          <div className="w-full bg-[var(--bg-card2)] rounded-full h-1.5 mb-2">
             <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
           </div>
           <div className="text-xs text-[var(--text-3)] text-right">100% пройдено</div>

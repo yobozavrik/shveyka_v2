@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
 
+const MASTER_POSITIONS = ['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир', 'менеджер', 'master'];
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -11,7 +13,7 @@ export async function PATCH(
   const { route_card_id } = await request.json();
 
   if (!batchId || !route_card_id) {
-    return NextResponse.json({ error: 'Невірні параметри' }, { status: 400 });
+    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
   }
 
   const user = await getCurrentUser(request);
@@ -29,10 +31,7 @@ export async function PATCH(
     
     if (emp) {
       const pos = (emp.position || '').toLowerCase();
-      const name = (emp.full_name || '').toLowerCase();
-      // Added more variations for 'master' and specific check for Marina
-      if (['майстер', 'мастер', 'адміністратор', 'администратор', 'бригадир', 'master'].includes(pos) || 
-          name.includes('марина') || name.includes('koval')) {
+      if (MASTER_POSITIONS.some(p => pos.includes(p))) {
         isPrivileged = true;
       }
     }
@@ -42,7 +41,6 @@ export async function PATCH(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Get current status to decide if we should update it
   const { data: currentBatch } = await supabaseAdmin
     .from('production_batches')
     .select('status')
@@ -54,7 +52,6 @@ export async function PATCH(
     updated_at: new Date().toISOString() 
   };
   
-  // Auto-transition from created to cutting
   if (currentBatch?.status === 'created') {
     updateData.status = 'cutting';
   }

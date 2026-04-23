@@ -37,7 +37,7 @@ export default function AttendancePage() {
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-black/5 dark:bg-white/5 text-[var(--text-2)] font-medium">
+          <thead className="bg-[var(--bg-card2)] text-[var(--text-2)] font-medium">
             <tr>
               <th className="px-6 py-4">Співробітник</th>
               <th className="px-6 py-4">Дата</th>
@@ -61,7 +61,7 @@ export default function AttendancePage() {
                 </td>
               </tr>
             ) : logs.map((log) => (
-              <tr key={log.id} className="hover:bg-black/5 dark:bg-white/5 transition-colors">
+              <tr key={log.id} className="hover:bg-[var(--bg-hover)] transition-colors">
                 <td className="px-6 py-4 font-medium flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 font-bold text-xs">
                     {log.employees?.full_name?.[0]}

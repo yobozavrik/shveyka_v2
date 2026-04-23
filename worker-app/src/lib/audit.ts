@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from './supabase';
+import { createRequestLogger } from './logger';
 
 /**
  * Записує дію робітника або майстра в загальний журнал аудиту.
@@ -12,8 +13,10 @@ export async function recordAuditLog(params: {
   request?: Request;
   auth?: { userId?: number | null; username?: string | null; employeeId?: number | null };
 }) {
+  const logger = params.request 
+    ? createRequestLogger(params.request, { action: 'audit_log' })
+    : null;
   try {
-    // Отримуємо IP та User-Agent з запиту
     const ip = params.request?.headers.get('x-forwarded-for') || 
              params.request?.headers.get('x-real-ip') || 
              'unknown';
@@ -38,9 +41,9 @@ export async function recordAuditLog(params: {
       .insert([logEntry]);
 
     if (error) {
-      console.error('Audit Log Error (Worker App):', error.message);
+      logger?.error('Audit Log Error (Worker App):', error.message);
     }
   } catch (err) {
-    console.error('Critical Error in recordAuditLog (Worker App):', err);
+    logger?.error('Critical Error in recordAuditLog (Worker App):', err);
   }
 }

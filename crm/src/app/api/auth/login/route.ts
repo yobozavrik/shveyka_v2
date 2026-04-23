@@ -1,61 +1,66 @@
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
-import { verifyPassword, signToken } from '@/lib/auth';
-import { AUTH_COOKIE } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { AuthService } from '@/services/auth.service';
+import { AUTH_COOKIE, REFRESH_COOKIE } from '@/lib/auth-server';
+import { REFRESH_TOKEN_EXPIRY_SECONDS } from '@/lib/auth';
+import { checkRateLimit, getRateLimitId, createRateLimitHeaders, rateLimitResponse } from '@/lib/rate-limit';
+import { ERROR_CODES, LoginSchema } from '@shveyka/shared';
 
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json();
-
-    const cleanUsername = username?.trim();
-    const cleanPassword = password?.trim();
-
-    if (!cleanUsername || !cleanPassword) {
-      return NextResponse.json({ message: 'Введіть логін та пароль' }, { status: 400 });
+    // 1. Rate Limiting
+    const clientIp = request.headers.get('x-forwarded-for') || 
+                     request.headers.get('x-real-ip') || 
+                     'unknown';
+    const rateLimitId = getRateLimitId(`ip:${clientIp}`);
+    const rateLimit = await checkRateLimit(rateLimitId, 'login');
+    
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.resetAt.getTime());
     }
 
-    const supabase = await createServerClient(true);
+    const headers = createRateLimitHeaders(rateLimit.remaining, rateLimit.resetAt.getTime());
 
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*, employees(*)')
-      .eq('username', cleanUsername)
-      .eq('is_active', true)
-      .single();
+    // 2. Validation
+    const body = await request.json().catch(() => ({}));
+    const parseResult = LoginSchema.safeParse(body);
 
-    if (error || !user) {
-      return NextResponse.json({ message: 'Невірний логін або пароль' }, { status: 401 });
+    if (!parseResult.success) {
+      const response = ApiResponse.error('Невірні дані входу', ERROR_CODES.VALIDATION_ERROR, 400);
+      headers.forEach((value, key) => response.headers.set(key, value));
+      return response;
     }
 
-    const isPasswordValid = await verifyPassword(cleanPassword, user.hashed_password);
+    // 3. Service Call
+    const result = await AuthService.login(parseResult.data, request);
 
-    if (!isPasswordValid) {
-      return NextResponse.json({ message: 'Невірний логін або пароль' }, { status: 401 });
+    if (!result.success) {
+      return ApiResponse.error(result.error!, ERROR_CODES.UNAUTHORIZED, result.status || 401);
     }
 
-    const token = await signToken({
-      userId: user.id,
-      username: user.username,
-      role: user.role,
-      employeeId: user.employee_id ?? null,
+    // 4. Response & Cookies
+    const response = ApiResponse.success({
+      token: result.token,
+      user: result.user
     });
 
-    const response = NextResponse.json({
-      token,
-      user: { id: user.id, username: user.username, role: user.role, employee: user.employees }
-    });
-
-    response.cookies.set(AUTH_COOKIE, token, {
+    response.cookies.set(AUTH_COOKIE, result.token!, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 60 * 15,
+      path: '/',
+    });
+
+    response.cookies.set(REFRESH_COOKIE, result.refreshToken!, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: REFRESH_TOKEN_EXPIRY_SECONDS,
       path: '/',
     });
 
     return response;
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json({ message: 'Помилка сервера' }, { status: 500 });
+    return ApiResponse.handle(error, 'auth_login');
   }
 }

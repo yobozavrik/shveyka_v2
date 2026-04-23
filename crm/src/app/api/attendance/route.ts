@@ -1,15 +1,15 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET() {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
-    const supabase = await createServerClient();
+    const supabase = await createServerClient(true);
 
-    // Get all attendance logs with employee names
     const { data, error } = await supabase
       .from('employee_attendance')
       .select(`
@@ -21,14 +21,92 @@ export async function GET() {
       `)
       .order('check_in', { ascending: false });
 
-    if (error) {
-      console.error('Supabase error fetching attendance:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return ApiResponse.handle(error, 'attendance');
+
+    return ApiResponse.success(data || []);
+  } catch (e: any) {
+    return ApiResponse.handle(e, 'attendance_get');
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const auth = await getAuth();
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
+
+    const body = await request.json();
+    const { employee_id, action, source } = body;
+
+    if (!employee_id) {
+      return ApiResponse.error('Не вказано employee_id', ERROR_CODES.BAD_REQUEST, 400);
     }
 
-    return NextResponse.json(data || []);
+    const supabase = await createServerClient(true);
+
+    if (action === 'check_in') {
+      const { data: existing } = await supabase
+        .from('employee_attendance')
+        .select('id')
+        .eq('employee_id', employee_id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (existing) {
+        return ApiResponse.error('Співробітник вже відмітив вхід', ERROR_CODES.CONFLICT, 409, { id: existing.id });
+      }
+
+      const { data, error } = await supabase
+        .from('employee_attendance')
+        .insert({
+          employee_id,
+          check_in: new Date().toISOString(),
+          status: 'active',
+          source: source || 'crm',
+        })
+        .select(`
+          *,
+          employees (full_name, position)
+        `)
+        .single();
+
+      if (error) return ApiResponse.handle(error, 'attendance');
+      return ApiResponse.success(data, 201);
+    }
+
+    if (action === 'check_out') {
+      const { data: active } = await supabase
+        .from('employee_attendance')
+        .select('id')
+        .eq('employee_id', employee_id)
+        .eq('status', 'active')
+        .order('check_in', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!active) {
+        return ApiResponse.error('Немає активного запису входу', ERROR_CODES.NOT_FOUND, 404);
+      }
+
+      const { data, error } = await supabase
+        .from('employee_attendance')
+        .update({
+          check_out: new Date().toISOString(),
+          status: 'completed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', active.id)
+        .select(`
+          *,
+          employees (full_name, position)
+        `)
+        .single();
+
+      if (error) return ApiResponse.handle(error, 'attendance');
+      return ApiResponse.success(data);
+    }
+
+    return ApiResponse.error('Невідома дія. Використовуйте check_in або check_out', ERROR_CODES.BAD_REQUEST, 400);
   } catch (e: any) {
-    console.error('Attendance GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'attendance_post');
   }
 }

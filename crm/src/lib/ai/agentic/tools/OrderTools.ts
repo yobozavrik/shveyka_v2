@@ -21,19 +21,19 @@ export const orderTools: Tool[] = [
         .eq('order_id', params.order_id);
       
       const { data: entries } = await supabase
-        .from('operation_entries')
+        .from('task_entries')
         .select('id, status')
         .in('batch_id', batches?.map(b => b.id) || []);
-      
-      const confirmed = entries?.filter(e => e.status === 'confirmed').length || 0;
+
+      const approved = entries?.filter(e => e.status === 'approved').length || 0;
       const total = entries?.length || 0;
-      
+
       return {
         success: true,
         data: {
           order,
           batches,
-          progress: { confirmed, total, percentage: total > 0 ? (confirmed / total * 100).toFixed(1) : 0 }
+          progress: { approved, total, percentage: total > 0 ? (approved / total * 100).toFixed(1) : 0 }
         },
         citations: [{
           type: 'table',
@@ -58,7 +58,7 @@ export const orderTools: Tool[] = [
         .from('production_batches')
         .select('id, batch_number, status')
         .eq('order_id', params.order_id)
-        .in('status', ['created', 'cutting', 'sewing']);
+        .in('status', ['created', 'cutting', 'sewing', 'overlock', 'straight_stitch', 'coverlock', 'packaging', 'ready']);
       
       for (const batch of batches || []) {
         if (batch.status === 'created') {
@@ -66,8 +66,8 @@ export const orderTools: Tool[] = [
         }
         
         const { data: recentEntries } = await supabase
-          .from('operation_entries')
-          .select('created_at')
+          .from('task_entries')
+          .select('recorded_at, created_at')
           .eq('batch_id', batch.id)
           .order('created_at', { ascending: false })
           .limit(1);

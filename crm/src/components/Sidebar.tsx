@@ -36,13 +36,13 @@ const menuGroups: MenuGroup[] = [
       { name: 'Склад',         icon: Warehouse,        href: '/warehouse',          roles: ['admin', 'manager'] },
       { name: 'Постачання',    icon: Truck,            href: '/supply',             roles: ['admin', 'manager'] },
       { name: 'Працівники',    icon: Users,            href: '/employees',    roles: ['admin', 'manager'] },
-      { name: 'Підтвердження', icon: ClipboardCheck,   href: '/master',       roles: ['admin', 'manager', 'master'] },
       { name: 'Аналітика',     icon: BarChart3,        href: '/analytics',    roles: ['admin', 'manager'] },
     ]
   },
   {
     label: 'Виробництво',
     items: [
+      { name: 'Каталог',       icon: BookOpen,         href: '/catalog',      roles: ['admin', 'manager'] },
       { name: 'Маршрути',      icon: Map,              href: '/route-cards',  roles: ['admin', 'manager'] },
       { name: 'Вир. замовлення', icon: FileText,        href: '/production-orders',  roles: ['admin', 'manager'] },
       { name: 'Партії',        icon: Package,          href: '/batches',      roles: ['admin', 'manager', 'master', 'quality'] },
@@ -74,10 +74,7 @@ export default function Sidebar({ userRole, username }: { userRole: string; user
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [pendingCount, setPendingCount] = useState(0);
-  const [mounted, setMounted] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
-  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const fetchPending = async () => {
@@ -97,7 +94,11 @@ export default function Sidebar({ userRole, username }: { userRole: string; user
   }, [userRole]);
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
     router.push('/login');
     router.refresh();
   };
@@ -107,65 +108,62 @@ export default function Sidebar({ userRole, username }: { userRole: string; user
   };
 
   return (
-    <aside className="w-60 bg-[var(--bg-sidebar)] border-r border-[var(--border)] flex flex-col shrink-0 overflow-hidden">
-      {/* Logo */}
-      <div className="px-4 py-5 border-b border-[var(--border)] shrink-0">
+    <aside className="w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] flex flex-col shrink-0 overflow-hidden">
+      {/* Logo — Linear style */}
+      <div className="px-4 py-4 border-b border-[var(--border-subtle)] shrink-0">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-600/25">
-            <Scissors className="h-5 w-5 text-white" />
+          <div className="h-8 w-8 bg-[var(--primary)] rounded-lg flex items-center justify-center">
+            <Scissors className="h-4 w-4 text-white" />
           </div>
           <div>
-            <div className="font-bold text-sm leading-tight text-[var(--text-1)]">Швейка MES</div>
-            <div className="text-[10px] text-[var(--text-3)] font-medium tracking-wide">ВИРОБНИЧИЙ МОДУЛЬ</div>
+            <div className="font-medium text-sm leading-tight text-[var(--text-1)] tracking-tight">Швейка</div>
+            <div className="text-[10px] text-[var(--text-4)] font-medium tracking-wider uppercase">Production</div>
           </div>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-2 py-3 space-y-4 overflow-y-auto custom-scrollbar">
+      {/* Nav — Linear style */}
+      <nav className="flex-1 px-2 py-3 space-y-5 overflow-y-auto custom-scrollbar" aria-label="Головна навігація">
         {menuGroups.map((group) => {
           const filteredItems = group.items.filter(item => item.roles.includes(userRole));
           if (filteredItems.length === 0) return null;
 
           const isCollapsed = collapsedGroups[group.label];
           // Determine if any child is active to auto-expand or highlight
-          const hasActiveChild = filteredItems.some(item => pathname === item.href || pathname.startsWith(item.href + '/'));
+          const hasActiveChild = filteredItems.some(item => pathname === item.href || pathname?.startsWith(item.href + '/'));
 
           return (
             <div key={group.label} className="space-y-1">
-              <button 
+              <button
                 onClick={() => toggleGroup(group.label)}
-                className="w-full flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors group"
+                className="w-full flex items-center gap-2 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-[var(--text-4)] hover:text-[var(--text-3)] transition-colors"
+                aria-expanded={!isCollapsed}
+                aria-label={`${group.label} секція`}
               >
                 <div className="flex-1 text-left">{group.label}</div>
                 <div className={`transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}>
-                  <ChevronDown className="h-4 w-4 opacity-50 group-hover:opacity-100" />
+                  <ChevronDown className="h-3.5 w-3.5 opacity-40" />
                 </div>
               </button>
-              
+
               {!isCollapsed && (
-                <div className="space-y-0.5">
+                <div className="space-y-px">
                   {filteredItems.map((item) => {
                     const itemPath = item.href.split('?')[0];
-                    const isActive = pathname === itemPath || pathname.startsWith(itemPath + '/');
-                    const showBadge = itemPath === '/master' && pendingCount > 0;
+                    const isActive = pathname === itemPath || pathname?.startsWith(itemPath + '/');
                     return (
                       <Link
                         key={item.name}
                         href={item.href}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                        className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-comfortable text-sm font-medium transition-all ${
                           isActive
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
+                            ? 'text-[var(--accent)]'
+                            : 'text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-[var(--bg-hover)]'
                         }`}
+                        style={isActive ? { backgroundColor: 'rgba(94, 106, 210, 0.10)' } : undefined}
                       >
-                        <item.icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-emerald-500' : 'text-[var(--text-3)]'}`} />
-                        <span className="flex-1">{item.name}</span>
-                        {showBadge && (
-                          <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
-                            {pendingCount > 9 ? '9+' : pendingCount}
-                          </span>
-                        )}
+                        <item.icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-[var(--accent)]' : 'text-[var(--text-4)]'}`} />
+                        <span className="flex-1 truncate">{item.name}</span>
                       </Link>
                     );
                   })}
@@ -176,37 +174,38 @@ export default function Sidebar({ userRole, username }: { userRole: string; user
         })}
       </nav>
 
-      {/* User + theme toggle + Logout */}
-      <div className="px-2 py-3 border-t border-[var(--border)] space-y-1">
+      {/* User + theme toggle + Logout — Linear style */}
+      <div className="px-2 py-3 border-t border-[var(--border-subtle)] space-y-1">
         {/* Theme toggle */}
-        {mounted && (
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="flex items-center gap-2.5 px-3 py-2 w-full rounded-xl text-sm font-medium text-[var(--text-2)] hover:text-[var(--text-1)] hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
-          >
-            {theme === 'dark'
-              ? <Sun className="h-4 w-4 text-amber-400" />
-              : <Moon className="h-4 w-4 text-indigo-500" />
-            }
-            {theme === 'dark' ? 'Світла тема' : 'Темна тема'}
-          </button>
-        )}
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="flex items-center gap-2 px-3 py-2 w-full rounded-comfortable text-xs font-medium text-[var(--text-3)] hover:text-[var(--text-2)] hover:bg-[var(--bg-hover)] transition-all cursor-pointer"
+          suppressHydrationWarning
+        >
+          {theme === 'dark'
+            ? <Sun className="h-3.5 w-3.5" />
+            : <Moon className="h-3.5 w-3.5" />
+          }
+          {theme === 'dark' ? 'Light' : 'Dark'}
+        </button>
 
-        <div className="flex items-center gap-2.5 px-3 py-2.5 bg-black/5 dark:bg-white/5 rounded-xl border border-[var(--border)]">
-          <div className="h-7 w-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase shrink-0">
-            {username?.[0] || 'A'}
+        {/* User card — Linear style */}
+        <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-comfortable bg-[var(--bg-hover)]/50 border border-[var(--border-subtle)]">
+          <div className="h-7 w-7 rounded-comfortable bg-[var(--primary)]/15 flex items-center justify-center text-xs font-medium text-[var(--accent)] shrink-0">
+            {username?.[0]?.toUpperCase() || 'A'}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold truncate text-[var(--text-1)]">{username}</div>
-            <div className="text-[10px] text-emerald-600 dark:text-emerald-500 uppercase font-bold tracking-wide">{userRole}</div>
+            <div className="text-sm font-medium truncate text-[var(--text-1)]">{username}</div>
+            <div className="text-[10px] text-[var(--text-4)] uppercase font-medium tracking-wide">{userRole}</div>
           </div>
         </div>
 
+        {/* Logout */}
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2.5 px-3 py-2 w-full rounded-xl text-sm font-medium text-[var(--text-3)] hover:text-red-500 hover:bg-red-500/8 transition-all cursor-pointer"
+          className="flex items-center gap-2 px-2.5 py-1.5 w-full rounded-comfortable text-xs font-medium text-[var(--text-4)] hover:text-red-400 hover:bg-red-500/5 transition-all cursor-pointer"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-3.5 w-3.5" />
           Вийти
         </button>
       </div>

@@ -32,7 +32,7 @@ export async function GET(request: Request, { params }: Params) {
   }
 
   const existingTask = (tasks || []).find(
-    (t) => t.task_type === 'cutting' || t.stage_id === CUTTING_STAGE_ID
+    (t: any) => t.task_type === 'cutting' || t.stage_id === CUTTING_STAGE_ID
   );
 
   if (existingTask) {

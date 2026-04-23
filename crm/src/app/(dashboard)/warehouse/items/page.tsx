@@ -20,11 +20,11 @@ interface Item {
 }
 
 const TYPE_MAP: Record<string, { label: string; color: string; icon: any }> = {
-  raw_material: { label: 'Сировина', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400', icon: Scale },
-  finished_good: { label: 'Готова Продукція', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: Package2 },
-  component: { label: 'Компонент', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', icon: Box },
-  fabric: { label: 'Тканина', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400', icon: Scale },
-  other: { label: 'Інше', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400', icon: Info },
+  raw_material: { label: 'Сировина', color: 'bg-sky-500/10 text-sky-500', icon: Scale },
+  finished_good: { label: 'Готова Продукція', color: 'bg-emerald-500/10 text-emerald-500', icon: Package2 },
+  component: { label: 'Компонент', color: 'bg-amber-500/10 text-amber-500', icon: Box },
+  fabric: { label: 'Тканина', color: 'bg-sky-500/10 text-sky-500', icon: Scale },
+  other: { label: 'Інше', color: 'bg-[var(--bg-card2)] text-[var(--text-2)]', icon: Info },
 };
 
 const EMPTY_FORM = { 
@@ -188,7 +188,7 @@ export default function ItemsPage() {
                          )}
                       </td>
                       <td className="px-6 py-4">
-                        <button className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-[var(--text-3)] transition-colors">
+                        <button className="p-1 hover:bg-[var(--bg-hover)] rounded-lg text-[var(--text-3)] transition-colors">
                           <MoreVertical className="h-4 w-4" />
                         </button>
                       </td>
@@ -207,7 +207,7 @@ export default function ItemsPage() {
           <div className="flex flex-col gap-6 h-full overflow-auto custom-scrollbar">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black tracking-widest text-indigo-500 uppercase">Деталі номенклатури</span>
-              <button onClick={() => setSelectedItem(null)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 rounded-xl transition-all">
+              <button onClick={() => setSelectedItem(null)} className="p-1.5 hover:bg-red-500/10 hover:text-red-500 rounded-xl transition-all">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -235,7 +235,7 @@ export default function ItemsPage() {
             {selectedItem.has_batches && (
               <div className="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl">
                  <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Увага</p>
-                 <p className="text-xs text-indigo-800 dark:text-indigo-300">Товар ведеться в розрізі партій/рулонів (Lot/Batch Tracking активно).</p>
+                 <p className="text-xs text-indigo-500">Товар ведеться в розрізі партій/рулонів (Lot/Batch Tracking активно).</p>
               </div>
             )}
 
@@ -269,7 +269,7 @@ export default function ItemsPage() {
                 <h3 className="text-2xl font-black text-[var(--text-1)]">Нова Номенклатура</h3>
                 <p className="text-[var(--text-3)] text-xs font-medium">Реєстрація товару, сировини або матеріалу</p>
               </div>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 rounded-2xl transition-all">
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-2xl transition-all">
                 <X className="h-6 w-6" />
               </button>
             </div>

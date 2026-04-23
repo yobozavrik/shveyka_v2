@@ -1,4 +1,7 @@
 import { AIProvider } from './AIProvider';
+import { z } from 'zod';
+
+const TIMEOUT_MS = 30000;
 
 interface GemmaResponse {
   content: string;
@@ -20,6 +23,9 @@ export class HuggingFaceProvider implements AIProvider {
   }
   
   async generateResponse(prompt: string, history: any[] = []): Promise<string> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    
     try {
       const response = await fetch(this.endpoint, {
         method: 'POST',
@@ -34,8 +40,11 @@ export class HuggingFaceProvider implements AIProvider {
             temperature: 0.7,
             return_full_text: false
           }
-        })
+        }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error(`HuggingFace API error: ${response.status}`);
@@ -44,8 +53,12 @@ export class HuggingFaceProvider implements AIProvider {
       const data = await response.json();
       return data[0]?.generated_text || '';
     } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('HuggingFace request timeout after 30 seconds');
+      }
       console.error('HuggingFace Provider Error:', error);
-      throw new Error(`Ошибка HuggingFace: ${error.message}`);
+      throw new Error(`HuggingFace error: ${error.message}`);
     }
   }
   
@@ -55,9 +68,9 @@ export class HuggingFaceProvider implements AIProvider {
   ): Promise<GemmaResponse> {
     const structuredPrompt = `${prompt}
 
-Ответ в формате JSON:
+Return the result in JSON format:
 {
-  "content": "Текст ответа",
+  "content": "your response text",
   "tool_calls": [{"name": "...", "params": {...}}]
 }`;
     
@@ -81,9 +94,9 @@ export class HuggingFaceProvider implements AIProvider {
     }
     
     const historyText = history
-      .map(h => `${h.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${h.content}`)
+      .map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`)
       .join('\n');
     
-    return `${historyText}\n\nПользователь: ${prompt}`;
+    return `${historyText}\n\nUser: ${prompt}`;
   }
 }

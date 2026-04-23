@@ -39,5 +39,7 @@ export async function GET(request: Request) {
     operations: operations || [],
     sizes,
     defect_types,
+  }, {
+    headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' },
   });
 }

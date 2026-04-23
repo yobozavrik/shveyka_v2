@@ -185,7 +185,7 @@ export default function CreateSupplyDocument() {
                              newItems[index].item_id = e.target.value;
                              setSupplyItems(newItems);
                            }}
-                           className="w-full bg-transparent border-none p-1 text-sm outline-none font-bold appearance-none cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"
+                           className="w-full bg-transparent border-none p-1 text-sm outline-none font-bold appearance-none cursor-pointer hover:bg-[var(--bg-hover)] rounded-lg"
                          >
                             <option value="">Виберіть товар...</option>
                             {items.map(i => <option key={i.id} value={i.id}>{i.name} ({i.sku})</option>)}

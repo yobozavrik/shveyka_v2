@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 const ManualBatchSchema = z.object({
   model_id: z.number(),
@@ -37,13 +39,13 @@ export async function POST(
 ) {
   const auth = await getAuth();
   if (!auth || !ALLOWED_ROLES.includes(auth.role)) {
-    return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
+    return ApiResponse.error('Доступ заборонено', ERROR_CODES.FORBIDDEN, 403);
   }
 
   const resolvedParams = await params;
   const orderId = parseInt(resolvedParams.id, 10);
   if (Number.isNaN(orderId)) {
-    return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+    return ApiResponse.error('Invalid order ID', ERROR_CODES.BAD_REQUEST, 400);
   }
 
   const supabase = await createServerClient(true);
@@ -51,10 +53,7 @@ export async function POST(
   const parsed = ManualBatchSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'Помилка валідації', details: parsed.error.flatten().fieldErrors },
-      { status: 400 }
-    );
+    return ApiResponse.error('Помилка валідації', ERROR_CODES.VALIDATION_ERROR, 400, parsed.error.flatten().fieldErrors);
   }
 
   const payload = parsed.data;
@@ -66,13 +65,14 @@ export async function POST(
     .single();
 
   if (orderError || !order) {
-    return NextResponse.json({ error: 'Замовлення не знайдено' }, { status: 404 });
+    return ApiResponse.error('Замовлення не знайдено', ERROR_CODES.NOT_FOUND, 404);
   }
 
   if (!['approved', 'launched', 'in_production'].includes(order.status)) {
-    return NextResponse.json(
-      { error: `Створити партію можна лише для замовлення у статусі approved, launched або in_production. Поточний статус: "${order.status}"` },
-      { status: 400 }
+    return ApiResponse.error(
+      `Створити партію можна лише для замовлення у статусі approved, launched або in_production. Поточний статус: "${order.status}"`,
+      ERROR_CODES.BAD_REQUEST,
+      400
     );
   }
 
@@ -82,14 +82,15 @@ export async function POST(
     .eq('order_id', orderId);
 
   if (linesError) {
-    return NextResponse.json({ error: linesError.message }, { status: 500 });
+    return ApiResponse.handle(linesError, 'production_orders_batches');
   }
 
   const line = (lines || []).find((item) => Number(item.model_id) === payload.model_id);
   if (!line) {
-    return NextResponse.json(
-      { error: 'Обрана позиція не належить цьому замовленню' },
-      { status: 400 }
+    return ApiResponse.error(
+      'Обрана позиція не належить цьому замовленню',
+      ERROR_CODES.BAD_REQUEST,
+      400
     );
   }
 
@@ -99,7 +100,7 @@ export async function POST(
     .eq('order_id', orderId);
 
   if (batchesError) {
-    return NextResponse.json({ error: batchesError.message }, { status: 500 });
+    return ApiResponse.handle(batchesError, 'production_orders_batches');
   }
 
   const nextIndex = (existingBatches || []).length + 1;
@@ -132,7 +133,7 @@ export async function POST(
     .single();
 
   if (createError) {
-    return NextResponse.json({ error: createError.message }, { status: 500 });
+    return ApiResponse.handle(createError, 'production_orders_batches');
   }
 
   await supabase.rpc('log_production_order_event', {
@@ -151,5 +152,5 @@ export async function POST(
     p_created_by: auth.userId,
   });
 
-  return NextResponse.json(createdBatch, { status: 201 });
+  return ApiResponse.success(createdBatch, 201);
 }

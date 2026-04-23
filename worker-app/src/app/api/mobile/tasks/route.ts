@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import { createRequestLogger } from '@/lib/logger';
 
 const ACTIVE_TASK_STATUSES = ['pending', 'accepted', 'in_progress'];
 
@@ -53,7 +54,129 @@ function firstRelation<T>(value: T | T[] | null | undefined) {
   return value || null;
 }
 
+async function loadStageByCode(stageCode: string) {
+  const supabase = getSupabaseAdmin('shveyka');
+  return supabase
+    .from('production_stages')
+    .select('id, code, name, assigned_role, sequence_order, color, is_active')
+    .eq('code', stageCode)
+    .eq('is_active', true)
+    .maybeSingle();
+}
+
+async function loadBatch(batchId: number) {
+  const supabase = getSupabaseAdmin('shveyka');
+  return supabase
+    .from('production_batches')
+    .select('id, batch_number, status, quantity, is_urgent, priority, fabric_type, fabric_color, size_variants, notes, planned_start_date, planned_end_date, product_models(id, name, sku)')
+    .eq('id', batchId)
+    .maybeSingle();
+}
+
+async function findExistingTask(batchId: number, stageId: number) {
+  const supabase = getSupabaseAdmin('shveyka');
+  return supabase
+    .from('batch_tasks')
+    .select('id, batch_id, stage_id, task_type, assigned_role, status, accepted_by_employee_id, accepted_at, completed_at, cancelled_at, launched_by_user_id, launched_at, notes, created_at, updated_at')
+    .eq('batch_id', batchId)
+    .eq('stage_id', stageId)
+    .in('status', ACTIVE_TASK_STATUSES)
+    .maybeSingle();
+}
+
+export async function POST(request: Request) {
+  const logger = createRequestLogger(request, { action: 'create_task' });
+  const user = await getCurrentUser(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const role = (user.role || '').toLowerCase();
+  if (!role || !user.employeeId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const batchId = Number(body?.batch_id);
+  const stageCode = String(body?.stage_code || '').trim().toLowerCase();
+  const operationId = body?.operation_id ? Number(body.operation_id) : null;
+
+  if (!Number.isFinite(batchId)) {
+    return NextResponse.json({ error: 'Invalid batch_id' }, { status: 400 });
+  }
+
+  if (!stageCode) {
+    return NextResponse.json({ error: 'stage_code is required' }, { status: 400 });
+  }
+
+  const supabase = getSupabaseAdmin('shveyka');
+
+  const [{ data: stage, error: stageError }, { data: batch, error: batchError }] = await Promise.all([
+    loadStageByCode(stageCode),
+    loadBatch(batchId),
+  ]);
+
+  if (stageError) {
+    logger.error('Stage lookup error:', stageError);
+    return NextResponse.json({ error: stageError.message }, { status: 500 });
+  }
+
+  if (!stage) {
+    return NextResponse.json({ error: `Stage not found: ${stageCode}` }, { status: 404 });
+  }
+
+  if (batchError) {
+    logger.error('Batch lookup error:', batchError);
+    return NextResponse.json({ error: batchError.message }, { status: 500 });
+  }
+
+  if (!batch) {
+    return NextResponse.json({ error: `Batch not found: ${batchId}` }, { status: 404 });
+  }
+
+  const stageRole = stage.assigned_role || stage.code;
+  if (stageRole !== role) {
+    return NextResponse.json({
+      error: `Forbidden: your role is '${role}', but stage '${stageCode}' requires '${stageRole}'`
+    }, { status: 403 });
+  }
+
+  const { data: existingTask, error: lookupError } = await findExistingTask(batchId, stage.id);
+
+  if (lookupError) {
+    logger.error('Task lookup error:', lookupError);
+    return NextResponse.json({ error: lookupError.message }, { status: 500 });
+  }
+
+  if (existingTask) {
+    return NextResponse.json({ task: existingTask, created: false });
+  }
+
+  const taskPayload = {
+    batch_id: batchId,
+    stage_id: stage.id,
+    task_type: stage.code,
+    assigned_role: stageRole,
+    status: 'pending',
+    notes: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: newTask, error: insertError } = await supabase
+    .from('batch_tasks')
+    .insert(taskPayload)
+    .select('*')
+    .single();
+
+  if (insertError || !newTask) {
+    logger.error('Task creation error:', insertError);
+    return NextResponse.json({ error: insertError?.message || 'Failed to create task' }, { status: 500 });
+  }
+
+  return NextResponse.json({ task: newTask, created: true });
+}
+
 export async function GET(request: Request) {
+  const logger = createRequestLogger(request, { action: 'list_tasks' });
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -79,7 +202,7 @@ export async function GET(request: Request) {
     .order('launched_at', { ascending: false });
 
   if (error) {
-    console.error('Tasks fetch error:', error);
+    logger.error('Tasks fetch error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -104,12 +227,12 @@ export async function GET(request: Request) {
   ]);
 
   if (batchesError) {
-    console.error('Tasks batch lookup error:', batchesError);
+    logger.error('Tasks batch lookup error:', batchesError);
     return NextResponse.json({ error: batchesError.message }, { status: 500 });
   }
 
   if (stagesError) {
-    console.error('Tasks stage lookup error:', stagesError);
+    logger.error('Tasks stage lookup error:', stagesError);
     return NextResponse.json({ error: stagesError.message }, { status: 500 });
   }
 
@@ -140,7 +263,7 @@ export async function GET(request: Request) {
       .in('task_id', taskIds);
 
     if (nastilsError) {
-      console.error('Task nastils summary error:', nastilsError);
+      logger.error('Task nastils summary error:', nastilsError);
       return NextResponse.json({ error: nastilsError.message }, { status: 500 });
     }
 

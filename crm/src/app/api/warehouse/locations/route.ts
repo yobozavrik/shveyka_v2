@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 export async function GET(request: Request) {
   try {
     const auth = await getAuth();
-    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const supabase = await createServerClient(true);
     const { searchParams } = new URL(request.url);
@@ -21,14 +22,10 @@ export async function GET(request: Request) {
     }
 
     const { data, error } = await query;
-    if (error) {
-      console.error('Supabase error fetching locations:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error) return ApiResponse.handle(error, 'warehouse_locations_get');
     
-    return NextResponse.json(data || []);
+    return ApiResponse.success(data || []);
   } catch (e: any) {
-    console.error('Locations GET exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'warehouse_locations_get');
   }
 }

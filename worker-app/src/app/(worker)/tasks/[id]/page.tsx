@@ -2,19 +2,40 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  Package2,
-  Scissors,
-  Send,
-  SquarePen,
-} from 'lucide-react';
 import clsx from 'clsx';
 import { extractSelectedSizes, extractSizeVariantQuantities } from '@/lib/sizeVariants';
+import {
+  getStageConfig,
+  isCuttingStage,
+  isPackagingStage,
+  isOverlockStage,
+  isSimpleQuantityStage,
+} from '@/lib/stageConfig';
+import StageHeader from '@/components/StageHeader';
+import EntryHistory from '@/components/EntryHistory';
+import { EmbroideryQueueCard as TaskEmbroideryQueueCard } from '@/components/task-page-shared';
+import {
+  CuttingOperationCard as TaskCuttingOperationCard,
+  SimpleQuantityOperationCard as TaskSimpleQuantityOperationCard,
+  PackagingOperationCard as TaskPackagingOperationCard,
+  DynamicFormOperationCard as TaskDynamicFormOperationCard,
+  ConfirmModal as TaskConfirmModal,
+  ValidationModal as TaskValidationModal,
+} from '@/components/task-operation-cards';
+import OverlockOperationCard from '@/components/OverlockOperationCard';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
+
+/* в”Ђв”Ђв”Ђ Icon helpers вЂ” Material Symbols в”Ђв”Ђв”Ђ */
+function IcExpandMore() { return <span className="material-symbols-outlined text-[16px]">expand_more</span>; }
+function IcExpandLess() { return <span className="material-symbols-outlined text-[16px]">expand_less</span>; }
+function IcEditNote() { return <span className="material-symbols-outlined text-[20px]">edit_note</span>; }
+function IcContentCut() { return <span className="material-symbols-outlined text-[20px]">content_cut</span>; }
+function IcSpinner({ className = '' }: { className?: string }) { return <span className={`material-symbols-outlined animate-spin ${className}`.trim()}>progress_activity</span>; }
+function IcAddTask() { return <span className="material-symbols-outlined text-[20px]">add_task</span>; }
+function IcCheckCircle() { return <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings:"'FILL' 1"}}>check_circle</span>; }
+function IcArrowBack() { return <span className="material-symbols-outlined text-[16px]">arrow_back</span>; }
+function IcInventory() { return <span className="material-symbols-outlined text-[40px] mx-auto mb-2 opacity-30">inventory_2</span>; }
+function IcWarning() { return <span className="material-symbols-outlined text-[20px]">warning</span>; }
 
 type FieldSchema = {
   key: string;
@@ -77,6 +98,7 @@ type TaskResponse = {
   legacy_nastils: any[];
   display_entries: Entry[];
   embroidery_nastils: Entry[];
+  source_size_breakdown?: Record<string, number>;
   summary?: {
     entries: number;
     quantity: number;
@@ -206,583 +228,8 @@ function normalizeLegacyNastils(rows: any[], stageId: number | null): Entry[] {
     recorded_at: row.created_at,
     source: 'legacy_cutting_nastils',
     operation_code: 'nastil',
-    operation_name: 'Настил',
+    operation_name: 'РќР°СЃС‚РёР»',
   }));
-}
-
-function FieldInput({
-  field,
-  value,
-  onChange,
-  availableColors,
-  }: {
-  field: FieldSchema;
-  value: any;
-  onChange: (value: any) => void;
-  availableColors: Array<{ color: string; rolls: number }>;
-}) {
-  if (field.key === 'nastil_number') {
-    return (
-      <div className="space-y-1.5">
-        <input
-          type="text"
-          value={String(value ?? '')}
-          readOnly
-          className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-card2)] px-4 py-3 text-sm font-black outline-none cursor-not-allowed"
-        />
-        <div className="text-[10px] font-semibold text-[var(--text-3)]">
-          Номер призначається автоматично. 1 запис = 1 рулон = 1 настил.
-        </div>
-      </div>
-    );
-  }
-
-  if (field.type === 'boolean') {
-    return (
-      <label className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm text-[var(--text-1)]">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(event) => onChange(event.target.checked)}
-          className="h-4 w-4 rounded border-[var(--border)]"
-        />
-        <span>{field.placeholder || 'Так / Ні'}</span>
-      </label>
-    );
-  }
-
-  if (field.type === 'select' && field.source === 'batch_colors' && availableColors.length > 0) {
-    return (
-      <select
-        value={String(value ?? '')}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
-      >
-        <option value="">Оберіть значення</option>
-        {availableColors.map((color, index) => (
-          <option key={`${color.color}-${index}`} value={color.color}>
-            {color.color}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  if (field.type === 'select' && Array.isArray(field.options) && field.options.length > 0) {
-    return (
-      <select
-        value={String(value ?? '')}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
-      >
-        <option value="">Оберіть значення</option>
-        {field.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  return (
-    <input
-      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-      step={
-        field.type === 'number'
-          ? field.key.includes('weight')
-            ? '0.1'
-            : field.key.includes('length')
-              ? '0.01'
-              : '1'
-          : undefined
-      }
-      value={String(value ?? '')}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={field.placeholder || field.label}
-      className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm outline-none"
-    />
-  );
-}
-
-function NastilEntryCard({
-  entry,
-  index,
-  selectedSizes,
-}: {
-  entry: Entry;
-  index: number;
-  selectedSizes: string[];
-}) {
-  const [expanded, setExpanded] = useState(true);
-
-  const d = entry.data || {};
-  const nastilNumber = d.nastil_number ?? String(index + 1);
-  const fabricColor = String(d.fabric_color || '—');
-  const qtyPerSize = Number(d.quantity_per_nastil ?? entry.quantity ?? 0);
-  const reelWidth = d.reel_width_cm != null ? Number(d.reel_width_cm) : null;
-  const reelLength = d.reel_length_m != null ? Number(d.reel_length_m) : null;
-  const weightKg = d.weight_kg != null ? Number(d.weight_kg) : null;
-  const remainderKg = d.remainder_kg != null ? Number(d.remainder_kg) : null;
-  const totalQty = qtyPerSize * (selectedSizes.length || 1);
-
-  const recordedAt = entry.recorded_at
-    ? new Date(entry.recorded_at).toLocaleString('uk-UA', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : '—';
-
-  const detailParts = [
-    reelWidth != null ? `${reelWidth} см` : null,
-    reelLength != null ? `${reelLength} м` : null,
-    weightKg != null ? `${weightKg} кг` : null,
-    remainderKg != null ? `залишок ${remainderKg} кг` : null,
-  ].filter(Boolean) as string[];
-
-  const cols = Math.min(selectedSizes.length, 6);
-
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] overflow-hidden">
-      {/* ─── Header ─── */}
-      <div className="flex items-start justify-between gap-3 p-4">
-        <div className="min-w-0">
-          <div className="text-[9px] font-black uppercase tracking-widest text-emerald-600">
-            Настил
-          </div>
-          <div className="text-xl font-black text-[var(--text-1)]">№{nastilNumber}</div>
-          <div className="mt-0.5 text-xs font-semibold text-[var(--text-2)]">
-            {fabricColor !== '—' ? fabricColor.toLowerCase() : '—'}
-            {qtyPerSize > 0 ? ` · ${qtyPerSize} шт на кожен розмір` : ''}
-          </div>
-        </div>
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-1 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[var(--text-3)] hover:bg-[var(--bg-card2)]"
-          aria-label={expanded ? 'Згорнути' : 'Розгорнути'}
-        >
-          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </button>
-      </div>
-
-      {expanded && (
-        <>
-          {/* ─── Info grid 2×2 ─── */}
-          <div className="border-t border-[var(--border)] grid grid-cols-2">
-            <div className="p-3 border-r border-[var(--border)]">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                Колір тканини
-              </div>
-              <div className="mt-1 text-sm font-black text-[var(--text-1)] uppercase">
-                {fabricColor}
-              </div>
-            </div>
-            <div className="p-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                Настил №
-              </div>
-              <div className="mt-1 text-sm font-black text-[var(--text-1)]">{nastilNumber}</div>
-            </div>
-            <div className="p-3 border-t border-r border-[var(--border)]">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                К-сть на розмір
-              </div>
-              <div className="mt-1 text-sm font-black text-[var(--text-1)]">
-                {qtyPerSize > 0 ? `${qtyPerSize} шт` : '—'}
-              </div>
-            </div>
-            <div className="p-3 border-t border-[var(--border)]">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                Час
-              </div>
-              <div className="mt-1 text-[11px] font-semibold text-[var(--text-1)]">
-                {recordedAt}
-              </div>
-            </div>
-          </div>
-
-          {/* ─── Size grid ─── */}
-          {selectedSizes.length > 0 && qtyPerSize > 0 && (
-            <div className="border-t border-[var(--border)] p-4 space-y-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                Розмірна сітка замовлення
-              </div>
-              <div
-                className="grid gap-px rounded-xl overflow-hidden border border-[var(--border)]"
-                style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-              >
-                {selectedSizes.slice(0, cols).map((size) => (
-                  <div
-                    key={size}
-                    className="bg-[var(--bg-card)] text-center px-2 py-2"
-                  >
-                    <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)] border-b border-[var(--border)] pb-1 mb-1">
-                      {size}
-                    </div>
-                    <div className="text-sm font-black text-[var(--text-1)]">{qtyPerSize}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs font-semibold text-[var(--text-2)]">
-                Всього по настилу:{' '}
-                <span className="font-black text-[var(--text-1)]">{totalQty} шт</span>
-              </div>
-            </div>
-          )}
-
-          {/* ─── Reel details ─── */}
-          {detailParts.length > 0 && (
-            <div className="border-t border-[var(--border)] p-4">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)] mb-2">
-                Деталі по запису
-              </div>
-              <div className="text-sm font-semibold text-[var(--text-2)]">
-                {detailParts.join(' · ')}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function EmbroideryQueueCard({
-  nastils,
-  selectedSizes,
-}: {
-  nastils: Entry[];
-  selectedSizes: string[];
-}) {
-  if (nastils.length === 0) return null;
-
-  return (
-    <section className="rounded-[28px] border border-indigo-200 bg-indigo-50/40 p-5 space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-indigo-500/15 p-3 text-indigo-500">
-          <SquarePen className="h-5 w-5" />
-        </div>
-        <div>
-          <div className="text-sm font-black text-[var(--text-1)]">Черга вишивки</div>
-          <div className="text-xs text-[var(--text-3)]">{nastils.length} настилів передано</div>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        {nastils.map((nastil, index) => {
-          const d = nastil.data || {};
-          const nastilNumber = d.nastil_number ?? String(index + 1);
-          const fabricColor = String(d.fabric_color || '—');
-          const embType = d.embroidery_type || '—';
-          const embColor = d.embroidery_color || '—';
-          const qty = Number(d.quantity_per_nastil ?? nastil.quantity ?? 0);
-          const total = qty * (selectedSizes.length || 1);
-          const sentAt = d.embroidery_sent_at
-            ? new Date(d.embroidery_sent_at).toLocaleString('uk-UA', {
-                day: '2-digit', month: '2-digit', year: 'numeric',
-                hour: '2-digit', minute: '2-digit',
-              })
-            : '—';
-
-          return (
-            <div key={String(nastil.id)} className="rounded-2xl border border-indigo-100 bg-white p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Настил</div>
-                  <div className="text-lg font-black text-[var(--text-1)]">№{nastilNumber}</div>
-                  <div className="text-xs font-semibold text-[var(--text-2)]">
-                    {fabricColor !== '—' ? fabricColor.toLowerCase() : '—'}
-                    {qty > 0 ? ` · ${qty} шт на розмір` : ''}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)]">Всього</div>
-                  <div className="text-lg font-black text-indigo-600 tabular-nums">{total > 0 ? total : qty} шт</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3">
-                  <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">Тип вишивки</div>
-                  <div className="text-sm font-black text-[var(--text-1)]">{embType}</div>
-                </div>
-                <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3">
-                  <div className="text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1">Колір вишивки</div>
-                  <div className="text-sm font-black text-[var(--text-1)]">{embColor}</div>
-                </div>
-              </div>
-
-              {selectedSizes.length > 0 && qty > 0 && (
-                <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-                  <div className="grid" style={{ gridTemplateColumns: `repeat(${Math.min(selectedSizes.length, 6)}, 1fr)` }}>
-                    {selectedSizes.slice(0, 6).map((size) => (
-                      <div key={size} className="bg-[var(--bg-card)] text-center px-2 py-2 border-r last:border-r-0 border-[var(--border)]">
-                        <div className="text-[9px] font-black uppercase tracking-widest text-[var(--text-3)] border-b border-[var(--border)] pb-1 mb-1">{size}</div>
-                        <div className="text-sm font-black text-[var(--text-1)]">{qty}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="text-[10px] font-semibold text-[var(--text-3)]">Передано: {sentAt}</div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function OperationCard({
-  operation,
-  entries,
-  draft,
-  setDraft,
-  onSubmit,
-  availableColors,
-  selectedSizes,
-  legacySizes,
-  saving,
-}: {
-  operation: StageOp;
-  entries: Entry[];
-  draft: Record<string, any>;
-  setDraft: (next: Record<string, any>) => void;
-  onSubmit: () => void;
-  availableColors: Array<{ color: string; rolls: number }>;
-  selectedSizes: string[];
-  legacySizes: Array<[string, number]>;
-  saving: boolean;
-}) {
-  const fields = getFields(operation.field_schema);
-  const ready = isDraftReady(fields, draft);
-
-  return (
-    <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="rounded-2xl bg-emerald-500/15 p-3 text-emerald-500">
-          <SquarePen className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-black text-[var(--text-1)]">{operation.name}</div>
-          <div className="text-xs text-[var(--text-3)]">
-            {operation.code} · {fields.length} полів
-          </div>
-        </div>
-      </div>
-
-      {operation.code === 'nastil' && (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Розмірна сітка</div>
-              <div className="text-sm font-black text-[var(--text-1)]">По партії</div>
-            </div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-              {selectedSizes.length > 0
-                ? `${selectedSizes.length} вибрано`
-                : legacySizes.length > 0
-                  ? 'Старий формат'
-                  : '—'}
-            </div>
-          </div>
-
-          {selectedSizes.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {selectedSizes.map((size) => (
-                <span
-                  key={size}
-                  className="inline-flex items-center rounded-xl bg-white border border-emerald-100 px-3 py-2 text-sm font-black text-slate-800 shadow-sm"
-                >
-                  {size}
-                </span>
-              ))}
-            </div>
-          ) : legacySizes.length > 0 ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {legacySizes
-                .slice()
-                .sort((left, right) => left[0].localeCompare(right[0], 'uk'))
-                .map(([size, qty]) => (
-                  <div
-                    key={size}
-                    className="flex items-center justify-between rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-[var(--text-2)]"
-                  >
-                    <span>{size}</span>
-                    <span>{qty}</span>
-                  </div>
-                ))}
-            </div>
-          ) : (
-            <div className="text-sm text-[var(--text-3)]">Розмірна сітка не задана.</div>
-          )}
-        </div>
-      )}
-
-      {fields.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3">
-          {fields.map((field) => (
-            <label key={field.key} className="space-y-1">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                <span>{field.label}</span>
-                {field.required && <span className="text-red-500">*</span>}
-              </div>
-              <FieldInput
-                field={field}
-                value={draft[field.key]}
-                availableColors={availableColors}
-                onChange={(value) =>
-                  setDraft({
-                    ...draft,
-                    [field.key]: value,
-                  })
-                }
-              />
-              {operation.code === 'nastil' && field.key === 'quantity_per_nastil' && (
-                <div className="text-[10px] font-semibold text-[var(--text-3)]">
-                  Вказана кількість розповсюджується на всю розмірну сітку цього настилу.
-                </div>
-              )}
-            </label>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-base)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
-          Для цієї операції ще не задано схему полів
-        </div>
-      )}
-
-      <button
-        onClick={onSubmit}
-        disabled={saving || !ready}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-4 text-sm font-black text-white disabled:opacity-60"
-      >
-        {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-        Додати запис
-      </button>
-
-      <div className="space-y-2">
-        <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-          Внесені записи: {entries.length}
-        </div>
-
-        {entries.length > 0 ? (
-          <div className="space-y-3">
-            {entries.map((entry, index) =>
-              operation.code === 'nastil' ? (
-                <NastilEntryCard
-                  key={String(entry.id)}
-                  entry={entry}
-                  index={index}
-                  selectedSizes={selectedSizes}
-                />
-              ) : (
-                <div
-                  key={String(entry.id)}
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] p-4 text-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="font-bold text-[var(--text-1)]">
-                      #{index + 1} · {entry.operation_name || operation.name}
-                    </div>
-                    <div className="text-xs font-black text-emerald-500">
-                      {Number(entry.quantity || 0)} шт
-                    </div>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-[var(--text-3)]">
-                    {entry.data &&
-                      typeof entry.data === 'object' &&
-                      Object.entries(entry.data)
-                        .filter(([key]) => key !== 'notes')
-                        .slice(0, 6)
-                        .map(([key, val]) => (
-                          <span key={key}>
-                            {key}: {String(val)}
-                          </span>
-                        ))}
-                  </div>
-                  {entry.notes && (
-                    <div className="mt-2 text-xs text-[var(--text-2)]">{entry.notes}</div>
-                  )}
-                </div>
-              ),
-            )}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-base)] px-4 py-8 text-center text-sm text-[var(--text-3)]">
-            Ще немає записів для цієї операції
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ConfirmModal({
-  open,
-  onClose,
-  onConfirm,
-  batchNumber,
-  modelName,
-  entriesCount,
-  quantityTotal,
-  busy,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  batchNumber: string;
-  modelName: string;
-  entriesCount: number;
-  quantityTotal: number;
-  busy: boolean;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 py-4 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-md rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-2xl">
-        <div className="flex items-start gap-3">
-          <div className="rounded-2xl bg-blue-600/15 p-3 text-blue-600">
-            <CheckCircle2 className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-lg font-black text-[var(--text-1)]">Завершити етап?</div>
-            <div className="mt-1 text-sm text-[var(--text-2)]">
-              {batchNumber} · {modelName}
-            </div>
-            <div className="mt-2 text-xs text-[var(--text-3)]">
-              {entriesCount} записів · {quantityTotal} шт
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-4 py-3 text-sm font-black text-[var(--text-2)] disabled:opacity-60"
-          >
-            Відміна
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white disabled:opacity-60"
-          >
-            {busy ? 'Збереження...' : 'Так, завершити'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function TaskPage() {
@@ -797,7 +244,11 @@ export default function TaskPage() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{ field: string; label: string; operation: string }[]>([]);
   const [forms, setForms] = useState<Record<number, Record<string, any>>>({});
+  const [simpleQuantityForms, setSimpleQuantityForms] = useState<Record<number, { quantity: string; defect: string; notes: string }>>({});
+  const [packagingForms, setPackagingForms] = useState<Record<number, { quantity: string; packagingType: string; notes: string }>>({});
+  const logger = useActivityLogger();
 
   const task = data?.task || null;
   const batch = data?.batch || task?.batch || firstRelation(task?.production_batches) || null;
@@ -807,7 +258,16 @@ export default function TaskPage() {
     return stages.find((item) => item.id === raw.id || item.code === raw.code) || raw;
   }, [data?.stage, stages, task?.production_stages, task?.stage]);
 
-  const operations: StageOp[] = stage?.operations || data?.stage?.operations || task?.stage?.operations || [];
+  const stageCode = stage?.code || null;
+  const stageConfig = getStageConfig(stageCode);
+
+  // Р”Р»СЏ СЂР°СЃРєСЂРѕСЏ РїРѕРєР°Р·С‹РІР°РµРј РўРћР›Р¬РљРћ РѕРїРµСЂР°С†РёСЋ nastil (СѓР±РёСЂР°РµРј РґСѓР±Р»РёСЂСѓСЋС‰СѓСЋ cutting)
+  const rawOperations: StageOp[] = stage?.operations || data?.stage?.operations || task?.stage?.operations || [];
+  const operations: StageOp[] = useMemo(() =>
+    isCuttingStage(stageCode)
+      ? rawOperations.filter(op => op.code === 'nastil')
+      : rawOperations
+  , [stageCode, rawOperations]);
   const entries: Entry[] = useMemo(() => {
     const mapped = normalizeTaskEntries((data?.entries || []) as Entry[], operations);
     if (mapped.length > 0) return mapped;
@@ -841,7 +301,7 @@ export default function TaskPage() {
       entries.filter((entry) => {
         const code = String(entry.operation_code || '').toLowerCase();
         const name = String(entry.operation_name || '').toLowerCase();
-        return code === 'nastil' || name === 'настил';
+        return code === 'nastil' || name === 'РЅР°СЃС‚РёР»';
       }).length,
     [entries],
   );
@@ -851,6 +311,17 @@ export default function TaskPage() {
   );
   const selectedSizes = useMemo(() => parseSizes(batch?.size_variants), [batch?.size_variants]);
   const legacySizes = useMemo(() => parseLegacySizes(batch?.size_variants), [batch?.size_variants]);
+  const sourceSizeRows = useMemo(() => {
+    const breakdown = data?.source_size_breakdown || {};
+    const orderedSizes = selectedSizes.length > 0 ? selectedSizes : Object.keys(breakdown);
+    const remainingSizes = Object.keys(breakdown).filter((size) => !orderedSizes.includes(size));
+    return [...orderedSizes, ...remainingSizes]
+      .map((size) => ({
+        size,
+        planned_qty: Number(breakdown[size] || 0),
+      }))
+      .filter((row) => row.size && row.planned_qty > 0);
+  }, [data?.source_size_breakdown, selectedSizes]);
 
   const entriesByOperation = useMemo(() => {
     const map = new Map<string, Entry[]>();
@@ -869,7 +340,7 @@ export default function TaskPage() {
     const nastilCount = entries.filter((entry) => {
       const code = String(entry.operation_code || '').toLowerCase();
       const name = String(entry.operation_name || '').toLowerCase();
-      return code === 'nastil' || name === 'настил';
+      return code === 'nastil' || name === 'РЅР°СЃС‚РёР»';
     }).length;
 
     return String(nastilCount + 1);
@@ -880,7 +351,7 @@ export default function TaskPage() {
 
   const load = async () => {
     if (!Number.isFinite(taskId)) {
-      setErr('Некоректний ідентифікатор завдання');
+      setErr('РќРµРєРѕСЂРµРєС‚РЅРёР№ С–РґРµРЅС‚РёС„С–РєР°С‚РѕСЂ Р·Р°РІРґР°РЅРЅСЏ');
       setLoading(false);
       return;
     }
@@ -897,13 +368,13 @@ export default function TaskPage() {
       const taskJson = await taskRes.json();
       const stagesJson = await stagesRes.json();
 
-      if (!taskRes.ok) throw new Error(taskJson.error || 'Не вдалося завантажити завдання');
-      if (!stagesRes.ok) throw new Error(stagesJson.error || 'Не вдалося завантажити етапи');
+      if (!taskRes.ok) throw new Error(taskJson.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё Р·Р°РІРґР°РЅРЅСЏ');
+      if (!stagesRes.ok) throw new Error(stagesJson.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё РµС‚Р°РїРё');
 
       setData(taskJson as TaskResponse);
       setStages(Array.isArray(stagesJson) ? stagesJson : []);
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Не вдалося завантажити завдання');
+      setErr(error instanceof Error ? error.message : 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІР°РЅС‚Р°Р¶РёС‚Рё Р·Р°РІРґР°РЅРЅСЏ');
     } finally {
       setLoading(false);
     }
@@ -944,10 +415,12 @@ export default function TaskPage() {
       });
 
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Не вдалося прийняти завдання');
+      if (!response.ok) throw new Error(json.error || 'РќРµ РІРґР°Р»РѕСЃСЏ РїСЂРёР№РЅСЏС‚Рё Р·Р°РІРґР°РЅРЅСЏ');
+      logger.logTaskAction('task_accept', taskId, batch?.id, stageCode);
+      window.dispatchEvent(new CustomEvent('task-accepted'));
       await load();
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Не вдалося прийняти завдання');
+      setErr(error instanceof Error ? error.message : 'РќРµ РІРґР°Р»РѕСЃСЏ РїСЂРёР№РЅСЏС‚Рё Р·Р°РІРґР°РЅРЅСЏ');
     } finally {
       setBusy(false);
     }
@@ -963,11 +436,12 @@ export default function TaskPage() {
       });
 
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Не вдалося завершити завдання');
+      if (!response.ok) throw new Error(json.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІРµСЂС€РёС‚Рё Р·Р°РІРґР°РЅРЅСЏ');
+      logger.logTaskAction('task_complete', taskId, batch?.id, stageCode);
       setConfirmOpen(false);
       await load();
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Не вдалося завершити завдання');
+      setErr(error instanceof Error ? error.message : 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р°РІРµСЂС€РёС‚Рё Р·Р°РІРґР°РЅРЅСЏ');
     } finally {
       setBusy(false);
     }
@@ -989,7 +463,12 @@ export default function TaskPage() {
       });
 
       const json = await response.json();
-      if (!response.ok) throw new Error(json.error || 'Не вдалося зберегти запис');
+      if (!response.ok) throw new Error(json.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р·Р°РїРёСЃ');
+
+      logger.logTaskAction('entry_add', taskId, batch?.id, stageCode, {
+        action_label: `Р”РѕРґР°С‚Рё Р·Р°РїРёСЃ: ${operation.name}`,
+        input_data: draft,
+      });
 
       setForms((current) => ({
         ...current,
@@ -1002,16 +481,115 @@ export default function TaskPage() {
 
       await load();
     } catch (error) {
+      setErr(error instanceof Error ? error.message : 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р·Р°РїРёСЃ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addEntryWithCustomData = async (operation: StageOp, data: Record<string, any>) => {
+    setSaving(true);
+
+    try {
+      const response = await fetch(`/api/mobile/tasks/${taskId}/entries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operation_id: operation.id,
+          data,
+          notes: typeof data.notes === 'string' ? data.notes : null,
+        }),
+      });
+
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р·Р°РїРёСЃ');
+
+      await load();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р·Р°РїРёСЃ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addOverlockEntry = async (operation: StageOp, rows: Array<{ size: string; quantity: number; defect_quantity: number }>, notes: string) => {
+    setSaving(true);
+
+    try {
+      const response = await fetch(`/api/mobile/tasks/${taskId}/entries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operation_id: operation.id,
+          data: {
+            size_rows: rows,
+            notes,
+          },
+          notes,
+        }),
+      });
+
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || 'Не вдалося зберегти запис');
+
+      await load();
+    } catch (error) {
       setErr(error instanceof Error ? error.message : 'Не вдалося зберегти запис');
     } finally {
       setSaving(false);
     }
   };
 
+  const validateBeforeComplete = () => {
+    const errors: { field: string; label: string; operation: string }[] = [];
+
+    // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РµСЃС‚СЊ Р·Р°РїРёСЃРё
+    if (entries.length === 0) {
+      setValidationErrors([{
+        field: 'entries',
+        label: 'РќРµРјР°С” Р¶РѕРґРЅРѕРіРѕ Р·Р°РїРёСЃСѓ. Р”РѕРґР°Р№С‚Рµ С…РѕС‡Р° Р± РѕРґРёРЅ Р·Р°РїРёСЃ РїРµСЂРµРґ Р·Р°РІРµСЂС€РµРЅРЅСЏРј.',
+        operation: '',
+      }]);
+      return false;
+    }
+
+    // Р”Р»СЏ РєР°Р¶РґРѕР№ РѕРїРµСЂР°С†РёРё РїСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РµСЃС‚СЊ Р·Р°РїРёСЃРё
+    operations.forEach((operation) => {
+      const operationEntries =
+        entriesByOperation.get(`id:${operation.id}`) ||
+        entriesByOperation.get(`code:${operation.code}`) ||
+        [];
+
+      // Р•СЃР»Рё Сѓ РѕРїРµСЂР°С†РёРё РЅРµС‚ РЅРё РѕРґРЅРѕРіРѕ Р·Р°РїРёСЃРё - СЌС‚Рѕ РѕС€РёР±РєР°
+      if (operationEntries.length === 0) {
+        errors.push({
+          field: operation.id.toString(),
+          label: `РћРїРµСЂР°С†С–СЏ "${operation.name}" РЅРµ РјР°С” Р¶РѕРґРЅРѕРіРѕ Р·Р°РїРёСЃСѓ. Р”РѕРґР°Р№С‚Рµ Р·Р°РїРёСЃ РїРµСЂРµРґ Р·Р°РІРµСЂС€РµРЅРЅСЏРј.`,
+          operation: operation.name,
+        });
+      }
+    });
+
+    setValidationErrors(errors);
+    return errors.length === 0;
+  };
+
+  const handleCompleteClick = () => {
+    const isValid = validateBeforeComplete();
+
+    if (!isValid) {
+      // РџРѕРєР°Р·С‹РІР°РµРј РјРѕРґР°Р»РєСѓ СЃ РѕС€РёР±РєР°РјРё
+      return;
+    }
+
+    // Р’СЃС‘ РІР°Р»РёРґРЅРѕ - РѕС‚РєСЂС‹РІР°РµРј РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ
+    setConfirmOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+        <IcSpinner className="text-[32px] text-emerald-500" />
       </div>
     );
   }
@@ -1023,8 +601,8 @@ export default function TaskPage() {
           onClick={() => router.back()}
           className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-[var(--text-3)]"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Назад
+          <IcArrowBack />
+          РќР°Р·Р°Рґ
         </button>
         <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
           {err}
@@ -1034,84 +612,50 @@ export default function TaskPage() {
   }
 
   const batchNumber = batch?.batch_number || `#${task?.batch_id}`;
-  const modelName = batch?.product_models?.name || 'Без моделі';
+  const modelName = batch?.product_models?.name || 'Р‘РµР· РјРѕРґРµР»С–';
 
   return (
-    <div className="px-4 py-5 pb-24 space-y-5">
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-2 text-xs font-bold text-[var(--text-3)]"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Назад
-      </button>
-
-      {err && (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
-          {err}
-        </div>
-      )}
-
-      <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
-              Партія
-            </div>
-            <h1 className="mt-1 text-2xl font-black text-[var(--text-1)]">{batchNumber}</h1>
-            <div className="mt-1 text-sm font-semibold text-[var(--text-2)]">
-              {modelName}
-              {batch?.product_models?.sku ? ` · ${batch.product_models.sku}` : ''}
-            </div>
-            <div className="mt-2 text-xs font-semibold text-[var(--text-3)]">
-              Етап: {stage?.name || 'Невідомий'}
-              {stage?.code ? ` · ${stage.code}` : ''}
-            </div>
+    <div className="flex flex-col gap-6 px-4 py-6 pb-24">
+      {/* в”Ђв”Ђв”Ђ Bento Info Header в”Ђв”Ђв”Ђ */}
+      <section className="bg-white dark:bg-surface-container-lowest rounded-[32px] p-6 shadow-sm border border-outline-variant/10 flex flex-col gap-6">
+        <div className="flex justify-between items-start">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] leading-none mb-1">
+              Р—Р°РІРґР°РЅРЅСЏ РїРѕ РїР°СЂС‚С–С—
+            </span>
+            <h1 className="text-3xl font-black text-on-surface leading-tight tracking-tight">{batchNumber}</h1>
+            <p className="text-sm font-bold text-on-surface-variant/60">
+              {modelName} {batch?.product_models?.sku ? `вЂў ${batch.product_models.sku}` : ''}
+            </p>
           </div>
-          <div
-            className={clsx(
-              'rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest',
-              isPending
-                ? 'bg-amber-500/15 text-amber-500'
-                : isActive
-                  ? 'bg-emerald-500/15 text-emerald-500'
-                  : 'bg-blue-500/15 text-blue-500',
-            )}
-          >
-            {isPending ? 'Очікує' : isActive ? 'В роботі' : 'Завершено'}
+          <div className={clsx(
+            "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider",
+            isPending ? "bg-amber-100 text-amber-700" : isActive ? "bg-primary/10 text-primary" : "bg-emerald-100 text-emerald-700"
+          )}>
+            {isPending ? 'РћС‡С–РєСѓС”' : isActive ? 'Р’ СЂРѕР±РѕС‚С–' : 'Р“РѕС‚РѕРІРѕ'}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-2)]">
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] p-3">
-            <div className="font-black uppercase tracking-widest text-[10px] text-[var(--text-3)]">
-              Тканина
-            </div>
-            <div className="mt-1 font-semibold text-[var(--text-1)]">
-              {batch?.fabric_type || '—'}
-            </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-surface-container-low rounded-[24px] p-4 border border-outline-variant/5">
+            <span className="material-symbols-outlined text-primary mb-2">category</span>
+            <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">РўРєР°РЅРёРЅР°</p>
+            <p className="text-sm font-black text-on-surface">{batch?.fabric_type || 'вЂ”'}</p>
           </div>
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] p-3">
-            <div className="font-black uppercase tracking-widest text-[10px] text-[var(--text-3)]">
-              Кількість
-            </div>
-            <div className="mt-1 font-semibold text-[var(--text-1)]">
-              {batch?.quantity || 0} шт
-            </div>
+          <div className="bg-surface-container-low rounded-[24px] p-4 border border-outline-variant/5">
+            <span className="material-symbols-outlined text-primary mb-2">inventory_2</span>
+            <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest leading-none mb-1">РџР»Р°РЅ</p>
+            <p className="text-sm font-black text-on-surface">{batch?.quantity || 0} С€С‚</p>
           </div>
         </div>
 
         {availableColors.length > 0 && (
-          <div>
-            <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-              Кольори тканини
-            </div>
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2">
+            <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest px-1">РљРѕР»СЊРѕСЂРё С‚РєР°РЅРёРЅРё</p>
+            <div className="flex flex-wrap gap-1.5">
               {availableColors.map((color, index) => (
-                <span
-                  key={`${color.color}-${index}`}
-                  className="rounded-full border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-xs font-bold text-[var(--text-2)]"
-                >
+                <span key={index} className="px-3 py-1.5 rounded-full bg-surface-container text-[11px] font-bold text-on-surface-variant flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
                   {color.color}
                 </span>
               ))}
@@ -1119,51 +663,34 @@ export default function TaskPage() {
           </div>
         )}
 
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-              Розміри
-            </div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-              {selectedSizes.length > 0
-                ? `${selectedSizes.length} вибрано`
-                : legacySizes.length > 0
-                  ? 'Старий формат'
-                  : '—'}
-            </div>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center px-1">
+            <p className="text-[10px] font-bold text-on-surface-variant/40 uppercase tracking-widest">Р РѕР·РјС–СЂРЅР° СЃС–С‚РєР°</p>
+            <p className="text-[10px] font-black text-primary uppercase">{selectedSizes.length || legacySizes.length} С‚РёРїС–РІ</p>
           </div>
-
-          {selectedSizes.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {selectedSizes.map((size) => (
-                <span
-                  key={size}
-                  className="rounded-full border border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 text-xs font-bold text-[var(--text-2)]"
-                >
+          <div className="flex flex-wrap gap-1.5">
+            {selectedSizes.length > 0 ? (
+              selectedSizes.map((size) => (
+                <span key={size} className="w-10 h-10 rounded-full bg-surface-container-low border border-outline-variant/10 flex items-center justify-center text-xs font-black text-on-surface shadow-sm">
                   {size}
                 </span>
-              ))}
-            </div>
-          ) : legacySizes.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2">
-              {legacySizes.map(([size, qty]) => (
-                <div
-                  key={size}
-                  className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg-base)] px-3 py-2 text-xs font-bold text-[var(--text-2)]"
-                >
-                  <span>{size}</span>
-                  <span>{qty}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-[var(--text-3)]">—</div>
-          )}
+              ))
+            ) : legacySizes.length > 0 ? (
+              legacySizes.map(([size, qty]) => (
+                <span key={size} className="px-3 py-1.5 rounded-full bg-surface-container-low border border-outline-variant/10 flex items-center gap-2 text-xs font-black text-on-surface shadow-sm">
+                  {size} <span className="opacity-30">В·</span> {qty}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs font-bold text-on-surface-variant/40 italic px-1">РќРµ РІРєР°Р·Р°РЅРѕ</span>
+            )}
+          </div>
         </div>
 
         {batch?.notes && (
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-800">
-            {batch.notes}
+          <div className="p-4 rounded-[24px] bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 flex items-start gap-3">
+            <span className="material-symbols-outlined text-amber-600 text-[20px]">info</span>
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-200/70 italic">"{batch.notes}"</p>
           </div>
         )}
       </section>
@@ -1172,14 +699,14 @@ export default function TaskPage() {
         <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-amber-500/15 p-3 text-amber-500">
-              <Scissors className="h-5 w-5" />
+              <IcContentCut />
             </div>
             <div>
               <div className="text-sm font-black text-[var(--text-1)]">
-                Потрібно прийняти завдання
+                РџРѕС‚СЂС–Р±РЅРѕ РїСЂРёР№РЅСЏС‚Рё Р·Р°РІРґР°РЅРЅСЏ
               </div>
               <div className="text-xs text-[var(--text-3)]">
-                Після прийняття відкриється робоче вікно з операціями
+                РџС–СЃР»СЏ РїСЂРёР№РЅСЏС‚С‚СЏ РІС–РґРєСЂРёС”С‚СЊСЃСЏ СЂРѕР±РѕС‡Рµ РІС–РєРЅРѕ Р· РѕРїРµСЂР°С†С–СЏРјРё
               </div>
             </div>
           </div>
@@ -1189,8 +716,8 @@ export default function TaskPage() {
             disabled={busy}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-4 text-sm font-black text-white disabled:opacity-60"
           >
-            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
-            Прийняти в роботу
+            {busy ? <IcSpinner className="text-[20px]" /> : <IcCheckCircle />}
+            РџСЂРёР№РЅСЏС‚Рё РІ СЂРѕР±РѕС‚Сѓ
           </button>
         </section>
       )}
@@ -1201,24 +728,141 @@ export default function TaskPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-3)]">
-                  Прогрес
+                  РџСЂРѕРіСЂРµСЃ
                 </div>
                 <div className="mt-1 text-sm font-semibold text-[var(--text-1)]">
                   {isEmbroideryStage
-                    ? `${embroideryNastils.length} настилів у черзі`
-                    : `${entries.length} записів · ${summaryQuantity} шт`}
+                    ? `${embroideryNastils.length} РЅР°СЃС‚РёР»С–РІ Сѓ С‡РµСЂР·С–`
+                    : `${entries.length} Р·Р°РїРёСЃС–РІ В· ${summaryQuantity} С€С‚`}
                 </div>
               </div>
               <div className="rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs font-black text-emerald-500">
-                {batch?.quantity || 0} план
+                {batch?.quantity || 0} РїР»Р°РЅ
               </div>
             </div>
           </div>
 
           {isEmbroideryStage ? (
-            <EmbroideryQueueCard nastils={embroideryNastils} selectedSizes={selectedSizes} />
+            <TaskEmbroideryQueueCard nastils={embroideryNastils} selectedSizes={selectedSizes} />
           ) : operations.length > 0 ? (
             operations.map((operation) => {
+              const operationEntries =
+                entriesByOperation.get(`id:${operation.id}`) ||
+                entriesByOperation.get(`code:${operation.code}`) ||
+                [];
+
+              // Cutting stage with nastil operation - use full form with schema
+              if (isCuttingStage(stageCode) && operation.code === 'nastil') {
+                const operationDraft =
+                  forms[operation.id] ||
+                  createDraft(
+                    operation.field_schema || [],
+                    nextNastilColor,
+                    nextNastilNumber,
+                  );
+
+                return (
+                  <TaskCuttingOperationCard
+                    key={operation.id}
+                    operation={operation}
+                    entries={operationEntries}
+                    draft={operationDraft}
+                    setDraft={(next) =>
+                      setForms((current) => ({
+                        ...current,
+                        [operation.id]: next,
+                      }))
+                    }
+                    onSubmit={() => addEntry(operation)}
+                    availableColors={availableColors}
+                    selectedSizes={selectedSizes}
+                    legacySizes={legacySizes}
+                    saving={saving}
+                  />
+                );
+              }
+
+              if (isOverlockStage(stageCode)) {
+                return (
+                  <OverlockOperationCard
+                    key={operation.id}
+                    operation={operation}
+                    entries={operationEntries}
+                    stageCode={stageCode}
+                    sizeRows={sourceSizeRows}
+                    saving={saving}
+                    onSubmit={(rows, notes) => addOverlockEntry(operation, rows, notes)}
+                  />
+                );
+              }
+
+              // Simple quantity stages (sewing, straight_stitch, coverlock)
+              if (isSimpleQuantityStage(stageCode)) {
+                const formState = simpleQuantityForms[operation.id] || { quantity: '', defect: '', notes: '' };
+
+                const handleSubmit = (quantity: string, defect: string, notes: string) => {
+                  const data: Record<string, any> = {
+                    quantity_done: Number(quantity) || 0,
+                  };
+                  if (defect && Number(defect) > 0) {
+                    data.defect_quantity = Number(defect);
+                  }
+                  if (notes.trim()) {
+                    data.notes = notes.trim();
+                  }
+
+                  addEntryWithCustomData(operation, data);
+                  setSimpleQuantityForms((current) => ({
+                    ...current,
+                    [operation.id]: { quantity: '', defect: '', notes: '' },
+                  }));
+                };
+
+                return (
+                  <TaskSimpleQuantityOperationCard
+                    key={operation.id}
+                    operation={operation}
+                    entries={operationEntries}
+                    stageCode={stageCode}
+                    saving={saving}
+                    onSubmit={handleSubmit}
+                  />
+                );
+              }
+
+              // Packaging stage
+              if (isPackagingStage(stageCode)) {
+                const formState = packagingForms[operation.id] || { quantity: '', packagingType: '', notes: '' };
+
+                const handleSubmit = (quantity: string, packagingType: string, notes: string) => {
+                  const data: Record<string, any> = {
+                    quantity_packed: Number(quantity) || 0,
+                    packaging_type: packagingType,
+                  };
+                  if (notes.trim()) {
+                    data.notes = notes.trim();
+                  }
+
+                  addEntryWithCustomData(operation, data);
+                  setPackagingForms((current) => ({
+                    ...current,
+                    [operation.id]: { quantity: '', packagingType: '', notes: '' },
+                  }));
+                };
+
+                return (
+                  <TaskPackagingOperationCard
+                    key={operation.id}
+                    operation={operation}
+                    entries={operationEntries}
+                    stageCode={stageCode}
+                    saving={saving}
+                    onSubmit={handleSubmit}
+                  />
+                );
+              }
+
+              // Default: use dynamic form from field_schema
               const operationDraft =
                 forms[operation.id] ||
                 createDraft(
@@ -1226,13 +870,9 @@ export default function TaskPage() {
                   operation.code === 'nastil' ? nextNastilColor : '',
                   operation.code === 'nastil' ? nextNastilNumber : '',
                 );
-                const operationEntries =
-                  entriesByOperation.get(`id:${operation.id}`) ||
-                  entriesByOperation.get(`code:${operation.code}`) ||
-                  [];
 
               return (
-                <OperationCard
+                <TaskDynamicFormOperationCard
                   key={operation.id}
                   operation={operation}
                   entries={operationEntries}
@@ -1245,41 +885,40 @@ export default function TaskPage() {
                   }
                   onSubmit={() => addEntry(operation)}
                   availableColors={availableColors}
-                  selectedSizes={selectedSizes}
-                  legacySizes={legacySizes}
                   saving={saving}
+                  stageCode={stageCode}
                 />
               );
             })
           ) : (
             <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-card)] p-5 text-center text-sm text-[var(--text-3)]">
-              <Package2 className="mx-auto mb-2 h-10 w-10 opacity-30" />
-              Для цього етапу ще не налаштовані операції
+              <IcInventory />
+              Р”Р»СЏ С†СЊРѕРіРѕ РµС‚Р°РїСѓ С‰Рµ РЅРµ РЅР°Р»Р°С€С‚РѕРІР°РЅС– РѕРїРµСЂР°С†С–С—
             </section>
           )}
 
           <button
-            onClick={() => setConfirmOpen(true)}
-            disabled={busy || (isEmbroideryStage ? embroideryNastils.length === 0 : entries.length === 0)}
+            onClick={handleCompleteClick}
+            disabled={busy}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white disabled:opacity-60"
           >
-            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
-            Завершити вишивку
+            {busy ? <IcSpinner className="text-[20px]" /> : <IcCheckCircle />}
+            {stageConfig.completeButtonText || 'Р—Р°РІРµСЂС€РёС‚Рё РµС‚Р°Рї'}
           </button>
         </section>
       )}
 
       {isCompleted && (
         <section className="rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-6 text-center">
-          <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-emerald-500" />
-          <div className="text-lg font-black text-[var(--text-1)]">Етап завершено</div>
+          <IcCheckCircle />
+          <div className="text-lg font-black text-[var(--text-1)]">Р•С‚Р°Рї Р·Р°РІРµСЂС€РµРЅРѕ</div>
           <div className="mt-1 text-sm text-[var(--text-2)]">
-            {batchNumber} · {modelName}
+            {batchNumber} В· {modelName}
           </div>
           <div className="mt-4 flex items-center justify-center gap-4 text-sm font-bold text-[var(--text-1)]">
-            <span>{entries.length} записів</span>
-            <span>•</span>
-            <span>{summaryQuantity} шт</span>
+            <span>{entries.length} Р·Р°РїРёСЃС–РІ</span>
+            <span>вЂў</span>
+            <span>{summaryQuantity} С€С‚</span>
           </div>
         </section>
       )}
@@ -1292,7 +931,9 @@ export default function TaskPage() {
 
       <div className="h-4" />
 
-      <ConfirmModal
+      <TaskValidationModal errors={validationErrors} onClose={() => setValidationErrors([])} />
+
+      <TaskConfirmModal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={completeTask}
@@ -1301,7 +942,11 @@ export default function TaskPage() {
         entriesCount={entries.length}
         quantityTotal={summaryQuantity}
         busy={busy}
+        confirmButtonText={stageConfig.completeButtonText}
       />
     </div>
   );
 }
+
+
+

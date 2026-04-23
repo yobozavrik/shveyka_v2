@@ -21,7 +21,7 @@ export default function MaterialsPage() {
             <div className="h-10 w-10 bg-indigo-500/10 text-indigo-500 rounded-xl flex items-center justify-center">
               <FileText className="h-5 w-5" />
             </div>
-            <button className="p-2 bg-black/5 dark:bg-white/5 rounded-lg text-[var(--text-3)] hover:text-emerald-500 transition-colors">
+            <button className="p-2 bg-[var(--bg-card2)] rounded-lg text-[var(--text-3)] hover:text-emerald-500 transition-colors">
               <Download className="h-4 w-4" />
             </button>
           </div>

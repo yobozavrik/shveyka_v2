@@ -1,62 +1,39 @@
-import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { getAuth } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit';
+import { ApiResponse } from '@/lib/api-response';
+import { ERROR_CODES } from '@shveyka/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function POST(request: Request, { params }: Params) {
+export async function POST(
+  request: Request,
+  { params }: Params
+) {
   try {
     const auth = await getAuth();
-    if (!auth || !['admin', 'manager'].includes(auth.role)) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
+    if (!auth) return ApiResponse.error('Unauthorized', ERROR_CODES.UNAUTHORIZED, 401);
 
     const { id } = await params;
     const docId = parseInt(id);
-
-    // We use admin client for critical transactions (inventory ledger)
     const supabase = await createServerClient(true);
 
-    // 1. Fetch the document and its items
-    const { data: doc, error: docErr } = await supabase
+    // 1. Get Document and its lines
+    const { data: doc, error: docError } = await supabase
       .from('supply_documents')
-      .select('*, supply_items(item_id, quantity, price)')
+      .select('*, supply_document_lines(*, items(*))')
       .eq('id', docId)
       .single();
 
-    if (docErr || !doc) {
-      return NextResponse.json({ error: 'Документ не знайдено' }, { status: 404 });
-    }
+    if (docError || !doc) return ApiResponse.error('Документ не знайдено', ERROR_CODES.NOT_FOUND, 404);
+    if (doc.status === 'confirmed') return ApiResponse.error('Документ вже проведено', ERROR_CODES.BAD_REQUEST, 400);
 
-    if (doc.status === 'confirmed') {
-      return NextResponse.json({ error: 'Документ вже проведено' }, { status: 400 });
-    }
-
-    // 2. Find Source (Vendor) and Target (Internal) locations
-    const { data: locations, error: locErr } = await supabase
-      .from('locations')
-      .select('id, type')
-      .in('type', ['vendor', 'internal']);
-
-    if (locErr || !locations) {
-      return NextResponse.json({ error: 'Не знайдено складські зони' }, { status: 500 });
-    }
-
-    const vendorLoc = locations.find((l: any) => l.type === 'vendor');
-    // Temporary: Pick the first internal warehouse. 
-    const targetLoc = locations.find((l: any) => l.type === 'internal'); 
-
-    if (!vendorLoc || !targetLoc) {
-      return NextResponse.json({ error: 'Помилка налаштування складів. Зв\'яжіться з адміном.' }, { status: 500 });
-    }
-
-    // 3. Prepare Double-Entry Journal Entries
-    const entries = (doc.supply_items || []).map((item: any) => ({
-      transaction_date: new Date().toISOString(),
-      item_id: item.item_id,
-      source_location_id: vendorLoc.id,
-      target_location_id: targetLoc.id,
+    // 2. Prepare Ledger Entries
+    const lines = doc.supply_document_lines || [];
+    const entries = lines.map((item: any) => ({
+      item_id: item.material_id,
+      source_location_id: null, // Приход извне
+      target_location_id: doc.target_location_id,
       qty: item.quantity,
       reference_type: 'supply_document',
       reference_id: doc.id,
@@ -65,7 +42,7 @@ export async function POST(request: Request, { params }: Params) {
     }));
 
     if (entries.length === 0) {
-      return NextResponse.json({ error: 'Документ порожній' }, { status: 400 });
+      return ApiResponse.error('Документ порожній', ERROR_CODES.BAD_REQUEST, 400);
     }
 
     // 4. Insert Entries into Ledger
@@ -73,9 +50,7 @@ export async function POST(request: Request, { params }: Params) {
       .from('stock_ledger_entries')
       .insert(entries);
 
-    if (ledgerErr) {
-      return NextResponse.json({ error: `Stock Ledger Error: ${ledgerErr.message}` }, { status: 500 });
-    }
+    if (ledgerErr) return ApiResponse.handle(ledgerErr, 'warehouse_supply_confirm');
 
     // 5. Update Document Status
     const { error: updateErr } = await supabase
@@ -85,25 +60,22 @@ export async function POST(request: Request, { params }: Params) {
 
     if (updateErr) {
       console.error("Critical: Document status update failed after journal entries were created", updateErr);
-      return NextResponse.json({ error: 'Помилка оновлення статусу документа' }, { status: 500 });
+      return ApiResponse.handle(updateErr, 'warehouse_supply_confirm');
     }
 
     // 6. Audit Trail
-    await recordAuditLog(
-      supabase,
-      auth.userId,
-      'update',
-      'supply_documents',
-      docId,
-      { status: 'draft' },
-      { status: 'confirmed', doc_number: doc.doc_number, entries_created: entries.length },
-      request.headers.get('user-agent'),
-      request.headers.get('x-forwarded-for')
-    );
+    await recordAuditLog({
+      action: 'UPDATE',
+      entityType: 'supply_documents',
+      entityId: String(docId),
+      oldData: { status: 'draft' },
+      newData: { status: 'confirmed', doc_number: doc.doc_number, entries_created: entries.length },
+      request: request,
+      auth: { id: auth.userId, username: auth.username },
+    });
 
-    return NextResponse.json({ success: true, message: 'Рахунок успішно проведено' });
+    return ApiResponse.success({ success: true, message: 'Рахунок успішно проведено' });
   } catch (e: any) {
-    console.error('Supply Document Confirm Exception:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return ApiResponse.handle(e, 'warehouse_supply_confirm');
   }
 }

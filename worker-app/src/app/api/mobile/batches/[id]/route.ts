@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrentUser } from '@/lib/auth';
+import { createRequestLogger } from '@/lib/logger';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createRequestLogger(request, { action: 'get_batch' });
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -27,7 +29,7 @@ export async function GET(
     .single();
 
   if (error || !batch) {
-    console.error('Batch error:', error);
+    logger.error('Batch error:', error);
     return NextResponse.json({ error: 'Партія не знайдена' }, { status: 404 });
   }
 
@@ -38,6 +40,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const logger = createRequestLogger(request, { action: 'update_batch' });
   const user = await getCurrentUser(request);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -60,7 +63,7 @@ export async function PATCH(
     .single();
 
   if (error) {
-    console.error('Batch update error:', error);
+    logger.error('Batch update error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
